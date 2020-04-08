@@ -35,7 +35,15 @@
 ********/
 int reflow_cycle = 0;
 
-double slope_setpoint;
+double standby_temp = 0;
+double preheat_temp = 130;
+double reflow_temp = 200;
+double steady_slope = 0;
+double preheat_slope = 1.5;
+double critical_slope = 1.5;
+double cooldown_slope = -3;
+
+double* slope_setpoint;
 float previous_temp = 0;
 float temp = 0;
 double input_slope = 0;
@@ -43,7 +51,7 @@ float previous_temps[] = {0,0,0,0,0};
 volatile boolean temp_updated = false;
 double output_pid_slope;
 
-double temp_setpoint;
+double* temp_setpoint;
 volatile float input_isr;
 double input_temp;
 double output_pid_temp;
@@ -60,10 +68,10 @@ MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
 //Specify the links and initial tuning parameters
 float Kp_temp=5, Ki_temp=0, Kd_temp=70;
-PID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, Kp_temp, Ki_temp, Kd_temp, DIRECT);
+PID PID_temp(&input_temp, &output_pid_temp, temp_setpoint, Kp_temp, Ki_temp, Kd_temp, DIRECT);
 
 float Kp_slope=200, Ki_slope=0, Kd_slope=0;
-PID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, Kp_slope, Ki_slope, Kd_slope, DIRECT);
+PID PID_slope(&input_slope, &output_pid_slope, slope_setpoint, Kp_slope, Ki_slope, Kd_slope, DIRECT);
 
 
 unsigned long windowStartTime;
@@ -98,7 +106,7 @@ void drawFooter(float temperature){
  
   String content = String(temperature);
   content += " --> ";
-  content += String(temp_setpoint);
+  content += String(*temp_setpoint);
   
   for(int i=0; i<content.length(); i++){
     display.write(content.charAt(i));
@@ -158,28 +166,28 @@ void changeReflowToCycle(int cycle){
   ********/
   switch (cycle) {
     case 1:
-      temp_setpoint = 150;
-      slope_setpoint = 1.5;
+      temp_setpoint = &preheat_temp;
+      slope_setpoint = &preheat_slope;
       break;
     case 2:
-      temp_setpoint = 150;
-      slope_setpoint = 0;
+      temp_setpoint = &preheat_temp;
+      slope_setpoint = &steady_slope;
       break;
     case 3:
-      temp_setpoint = 240;
-      slope_setpoint = 1.5;
+      temp_setpoint = &reflow_temp;
+      slope_setpoint = &critical_slope;
       break;
     case 4:
-      temp_setpoint = 240;
-      slope_setpoint = 0;
+      temp_setpoint = &reflow_temp;
+      slope_setpoint = &steady_slope;
       break;
     case 5:
-      temp_setpoint = 25;
-      slope_setpoint = -3;
+      temp_setpoint = &standby_temp;
+      slope_setpoint = &cooldown_slope;
       break;
     default:
-      temp_setpoint = 0;
-      slope_setpoint = 0;
+      temp_setpoint = &standby_temp;
+      slope_setpoint = &steady_slope;
       break;
   }
 }
@@ -226,10 +234,17 @@ void setup() {
 
 void loop() {
 
-  int newPosition = encoder.read();
-  if (newPosition != oldPosition) {
-    oldPosition = newPosition;
-    Serial.println(newPosition);
+  // In setup/standby mode
+  if(reflow_cycle == 0){
+      int newPosition = encoder.read();
+    if (newPosition != oldPosition) {
+      oldPosition = newPosition;
+      Serial.println(newPosition);
+    }
+  }
+  //In active mode
+  else {
+    
   }
   
   noInterrupts();
@@ -246,7 +261,7 @@ void loop() {
     
   }
 
-  if(reflow_cycle == 1 && input_temp >= temp_setpoint) changeReflowToCycle(2);
+  if(reflow_cycle == 1 && input_temp >= *temp_setpoint) changeReflowToCycle(2);
   
   // Shift last 5 temps to left and add current temp
   if(temp_updated){
