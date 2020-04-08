@@ -7,6 +7,10 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#include <Encoder.h>
+
+
+
 
 #define RELAY_PIN             6
 #define RELAY_WINDOW          2500
@@ -16,6 +20,10 @@
 #define THERMO_CLK            13
 
 #define GFX_TIME_PER_PIXEL    1875  //240.000ms/128px
+
+#define ENCODER_CLK           4
+#define ENCODER_DT            3
+#define ENCODER_SW            2
 
 /*******
 0: Standby
@@ -70,6 +78,9 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 long time_start = 0;
 long last_draw = 0;
 int next_pixel_idx = 0;
+
+Encoder encoder(ENCODER_DT, ENCODER_CLK);
+int oldPosition  = -999;
 
 void drawFooter(float temperature){
   display.drawLine(0, 53, display.width(), 53, SSD1306_WHITE);
@@ -214,6 +225,12 @@ void setup() {
 }
 
 void loop() {
+
+  int newPosition = encoder.read();
+  if (newPosition != oldPosition) {
+    oldPosition = newPosition;
+    Serial.println(newPosition);
+  }
   
   noInterrupts();
   input_temp = input_isr;
