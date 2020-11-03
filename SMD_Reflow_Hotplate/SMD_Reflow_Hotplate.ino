@@ -9,9 +9,6 @@
 
 #include <Encoder.h>
 
-
-
-
 #define RELAY_PIN             6
 #define RELAY_WINDOW          2500
 
@@ -19,62 +16,57 @@
 #define THERMO_CS             10
 #define THERMO_CLK            13
 
-#define GFX_TIME_PER_PIXEL    1875  //240.000ms/128px
+#define GFX_TIME_PER_PIXEL    2350  //240.000ms/128px = 1875
 
 #define ENCODER_CLK           4
 #define ENCODER_DT            3
 #define ENCODER_SW            2
 
-/*******
-0: Standby
-1: Ambient -> Preheat
-2: Preheat
-3: Preheat -> Reflow
-4: Reflow
-5: Reflow -> Ambient (Off)
-********/
-int reflow_cycle = 0;
+  /*******
+  0: Config menu
+  1: Standby
+  2: Ambient -> Preheat
+  3: Preheat
+  4: Preheat -> Reflow
+  5: Reflow
+  6: Reflow -> Ambient (Off)
+  ********/
+volatile int reflow_cycle = 0;
 
-double standby_temp = 0;
-double preheat_temp = 130;
-double reflow_temp = 200;
+double disabled_temp = 0;
+double standby_temp = 50;
+double preheat_temp = 150;
+double reflow_temp = 240;
 double steady_slope = 0;
 double preheat_slope = 1.5;
 double critical_slope = 1.5;
 double cooldown_slope = -3;
 
-double* slope_setpoint;
-float previous_temp = 0;
-float temp = 0;
+double slope_setpoint;
 double input_slope = 0;
-float previous_temps[] = {0,0,0,0,0};
-volatile boolean temp_updated = false;
 double output_pid_slope;
 
-double* temp_setpoint;
+double temp_setpoint;
+float previous_temps[] = {0,0,0,0,0};
+volatile boolean temp_updated = false;
 volatile float input_isr;
 double input_temp;
 double output_pid_temp;
 
 float output_pid_series;
 
-int relay_dc = 0;
-
-int output_zero_offset = 300;
-
-long last_telem = 0;
-
 MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
 //Specify the links and initial tuning parameters
-float Kp_temp=5, Ki_temp=0, Kd_temp=70;
-PID PID_temp(&input_temp, &output_pid_temp, temp_setpoint, Kp_temp, Ki_temp, Kd_temp, DIRECT);
+double Kp_temp=5.7, Ki_temp=0.1, Kd_temp=73;
+PID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, Kp_temp, Ki_temp, Kd_temp, DIRECT);
 
-float Kp_slope=200, Ki_slope=0, Kd_slope=0;
-PID PID_slope(&input_slope, &output_pid_slope, slope_setpoint, Kp_slope, Ki_slope, Kd_slope, DIRECT);
+double Kp_slope=200, Ki_slope=0, Kd_slope=0;
+PID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, Kp_slope, Ki_slope, Kd_slope, DIRECT);
 
-
+long time_start = 0;
 unsigned long windowStartTime;
+long last_cycle_change = 0;
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -83,12 +75,12 @@ unsigned long windowStartTime;
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-long time_start = 0;
+
 long last_draw = 0;
 int next_pixel_idx = 0;
 
 Encoder encoder(ENCODER_DT, ENCODER_CLK);
-int oldPosition  = -999;
+volatile int menu_setting = 0;
 
 void drawFooter(float temperature){
   display.drawLine(0, 53, display.width(), 53, SSD1306_WHITE);
@@ -101,12 +93,12 @@ void drawFooter(float temperature){
 
   display.setTextSize(1);      // Normal 1:1 pixel scale
   display.setTextColor(SSD1306_WHITE); // Draw white text
-  display.setCursor(10, 55);     // Start at top-left corner
+  display.setCursor(15, 55);     // Start at top-left corner
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
  
   String content = String(temperature);
   content += " --> ";
-  content += String(*temp_setpoint);
+  content += String(temp_setpoint);
   
   for(int i=0; i<content.length(); i++){
     display.write(content.charAt(i));
@@ -131,11 +123,37 @@ void fetchData(void){
   //Serial.println(input_isr, 2);
 }
 
+void enc_SW(void){
+  noInterrupts();
+  delay(750);
+  if(reflow_cycle == 0){
+    if(menu_setting == 0){
+      standby_temp = int(standby_temp+int(encoder.readAndReset()/4.0));
+      menu_setting = 1;
+    }
+    else if(menu_setting == 1){
+      preheat_temp = int(preheat_temp+int(encoder.readAndReset()/4.0));
+      menu_setting = 2;
+    }
+    else if(menu_setting == 2){
+      reflow_temp = int(reflow_temp+int(encoder.readAndReset()/4.0));
+      menu_setting = 3;
+    }
+    else changeReflowToCycle(1);
+  }
+  else if(reflow_cycle == 1){
+    //changeReflowToCycle(2);
+  }
+  
+
+  interrupts();
+}
+
 double calculateLinRegSlope(void){
   double sum_x = 0;
   double sum_y = 0;
   double sum_x2 = 0;
-  double sum_y2 = 0;
+  //double sum_y2 = 0;
   double sum_xy = 0;
   
   double x[]={0,0.5,1.0,1.5,2.0};
@@ -157,58 +175,163 @@ double calculateLinRegSlope(void){
 
 void changeReflowToCycle(int cycle){
   /*******
-  0: Standby
-  1: Ambient -> Preheat
-  2: Preheat
-  3: Preheat -> Reflow
-  4: Reflow
-  5: Reflow -> Ambient (Off)
+  0: Config menu
+  1: Standby
+  2: Ambient -> Preheat
+  3: Preheat
+  4: Preheat -> Reflow
+  5: Reflow
+  6: Reflow -> Ambient (Off)
   ********/
   switch (cycle) {
     case 1:
-      temp_setpoint = &preheat_temp;
-      slope_setpoint = &preheat_slope;
+      temp_setpoint = standby_temp;
+      slope_setpoint = preheat_slope;
       break;
     case 2:
-      temp_setpoint = &preheat_temp;
-      slope_setpoint = &steady_slope;
+      temp_setpoint = preheat_temp;
+      slope_setpoint = preheat_slope;
       break;
     case 3:
-      temp_setpoint = &reflow_temp;
-      slope_setpoint = &critical_slope;
+      temp_setpoint = preheat_temp;
+      slope_setpoint = steady_slope;
       break;
     case 4:
-      temp_setpoint = &reflow_temp;
-      slope_setpoint = &steady_slope;
+      temp_setpoint = reflow_temp;
+      slope_setpoint = critical_slope;
       break;
     case 5:
-      temp_setpoint = &standby_temp;
-      slope_setpoint = &cooldown_slope;
+      temp_setpoint = reflow_temp;
+      slope_setpoint = steady_slope;
+      break;
+    case 6:
+      temp_setpoint = standby_temp;
+      slope_setpoint = cooldown_slope;
       break;
     default:
-      temp_setpoint = &standby_temp;
-      slope_setpoint = &steady_slope;
+      temp_setpoint = disabled_temp;
+      slope_setpoint = steady_slope;
       break;
   }
+
+  last_cycle_change = millis();
+  reflow_cycle = cycle;
 }
   
 void setup() {
-  Serial.begin(9600);
+  //Serial.begin(9600);
   pinMode(RELAY_PIN, OUTPUT);
-  delay(500);
+  pinMode(ENCODER_SW, INPUT);
 
+  attachInterrupt(digitalPinToInterrupt(ENCODER_SW), enc_SW, FALLING);
+  
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
-    Serial.println(F("SSD1306 allocation failed"));
+    //Serial.println(F("SSD1306 allocation failed"));
     for(;;); // Don't proceed, loop forever
   }
 
   display.clearDisplay();
 
+  //initialize the variables we're linked to
+  changeReflowToCycle(0);
+
+   // In setup/standby mode
+  while(reflow_cycle == 0){
+    display.clearDisplay();
+    
+    if(menu_setting == 0){
+      display.setTextSize(1);      // Normal 1:1 pixel scale
+      display.setTextColor(SSD1306_WHITE); // Draw white text
+      display.setCursor(30, 0);     // Start at top-left corner
+      display.cp437(true);         // Use full 256 char 'Code Page 437' font
+     
+      String content = "Set Standby";
+      
+      for(int i=0; i<content.length(); i++){
+        display.write(content.charAt(i));
+      }
+
+      display.setTextSize(5);
+      display.setCursor(30, 15);
+
+      content = String(int(standby_temp+int(encoder.read()/4.0)));
+
+       for(int i=0; i<content.length(); i++){
+        display.write(content.charAt(i));
+      }
+    
+      display.display();
+      
+    }
+    else if(menu_setting == 1){
+      display.setTextSize(1);      // Normal 1:1 pixel scale
+      display.setTextColor(SSD1306_WHITE); // Draw white text
+      display.setCursor(25, 0);     // Start at top-left corner
+      display.cp437(true);         // Use full 256 char 'Code Page 437' font
+     
+      String content = "Set Preheat";
+      
+      for(int i=0; i<content.length(); i++){
+        display.write(content.charAt(i));
+      }
+
+      display.setTextSize(5);
+      display.setCursor(15, 15);
+
+      content = String(int(preheat_temp+int(encoder.read()/4.0)));
+
+       for(int i=0; i<content.length(); i++){
+        display.write(content.charAt(i));
+      }
+    
+      display.display();
+    }
+    else if(menu_setting == 2){
+      display.setTextSize(1);      // Normal 1:1 pixel scale
+      display.setTextColor(SSD1306_WHITE); // Draw white text
+      display.setCursor(25, 0);     // Start at top-left corner
+      display.cp437(true);         // Use full 256 char 'Code Page 437' font
+     
+      String content = "Set Reflow";
+      
+      for(int i=0; i<content.length(); i++){
+        display.write(content.charAt(i));
+      }
+
+      display.setTextSize(5);
+      display.setCursor(15, 15);
+
+      content = String(int(reflow_temp+int(encoder.read()/4.0)));
+
+       for(int i=0; i<content.length(); i++){
+        display.write(content.charAt(i));
+      }
+    
+      display.display();
+    }
+    else if(menu_setting == 3){
+      display.setTextSize(4);      // Normal 1:1 pixel scale
+      display.setTextColor(SSD1306_WHITE); // Draw white text
+      display.setCursor(5, 20);     // Start at top-left corner
+      display.cp437(true);         // Use full 256 char 'Code Page 437' font
+     
+      String content = "START";
+      
+      for(int i=0; i<content.length(); i++){
+        display.write(content.charAt(i));
+      }
+
+      display.display();
+    }
+  }
+
+  display.clearDisplay();
+  display.display();
+  
   windowStartTime = millis();
   time_start = millis();
 
-  //initialize the variables we're linked to
-  changeReflowToCycle(1);
+  
 
   for(int i = 0; i<5; i++){ previous_temps[i] = thermocouple.readCelsius(); }
 
@@ -223,37 +346,26 @@ void setup() {
   // Fetch sensor data every 500ms
   Timer1.initialize(500000);
   Timer1.attachInterrupt(fetchData);
-
   
   //turn the PID on
   PID_temp.SetMode(AUTOMATIC);
   PID_slope.SetMode(AUTOMATIC);
 
   
+  
 }
 
-void loop() {
-
-  // In setup/standby mode
-  if(reflow_cycle == 0){
-      int newPosition = encoder.read();
-    if (newPosition != oldPosition) {
-      oldPosition = newPosition;
-      Serial.println(newPosition);
-    }
-  }
-  //In active mode
-  else {
-    
-  }
+void loop() {  
   
   noInterrupts();
   input_temp = input_isr;
   interrupts();
 
   if(millis() - last_draw > GFX_TIME_PER_PIXEL){
+    if(reflow_cycle > 1){
+      updateGraph(input_temp);
+    }
     
-    updateGraph(input_temp);
     drawFooter(input_temp);
 
     last_draw = millis();
@@ -261,8 +373,11 @@ void loop() {
     
   }
 
-  if(reflow_cycle == 1 && input_temp >= *temp_setpoint) changeReflowToCycle(2);
-  
+  if(reflow_cycle == 1 && input_temp >= temp_setpoint && (millis() - last_cycle_change > 60000)) changeReflowToCycle(2);
+  else if((reflow_cycle == 2 || reflow_cycle == 4) && input_temp >= temp_setpoint) changeReflowToCycle(reflow_cycle+1);
+  else if(reflow_cycle == 3 && (millis() - last_cycle_change > 20000)) changeReflowToCycle(4);
+  else if(reflow_cycle == 5 && (millis() - last_cycle_change > 30000)) changeReflowToCycle(6);
+    
   // Shift last 5 temps to left and add current temp
   if(temp_updated){
     for(int i=0; i<4; i++){
@@ -284,22 +399,12 @@ void loop() {
 
   output_pid_series = ((output_pid_temp/100.0) * (output_pid_slope/100.0))*100.0;
   
-  relay_dc = map(output_pid_series, 0, 100, 0, RELAY_WINDOW);
-  
-  //relay_dc = output_pid_temp+output_zero_offset;
-  if (millis() - last_telem > 250){
-    Serial.print(input_temp);
-    Serial.print(" ");
-    Serial.println(input_slope*100);
-
-    last_telem = millis();
-  }
+  int relay_dc = map(output_pid_series, 0, 100, 0, RELAY_WINDOW);
    
   
   if (millis() - windowStartTime > RELAY_WINDOW)
   { 
-    //gradient = (input_temp-previous_temp)/5.0;
-    
+        
     /*Serial.print(input_temp, 2);
     Serial.print("°C , ");
     Serial.print(input_slope, 4);
@@ -311,10 +416,6 @@ void loop() {
     Serial.print(relay_dc, 2);
     Serial.println("ms");*/
 
-   
-
-    previous_temp = input_temp;
-
     //time to shift the Relay Window
     windowStartTime = millis();
   }
@@ -325,5 +426,8 @@ void loop() {
   else{
     digitalWrite(RELAY_PIN, LOW);
   }
+  
+  
+  
   
 }
