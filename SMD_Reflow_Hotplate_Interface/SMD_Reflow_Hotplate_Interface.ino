@@ -11,8 +11,8 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 long time_start = 0;
-double temp_storage[128] = {0};
-long last_storage = 0;
+//double temp_storage[128] = {0};
+//long last_storage = 0;
 
 void drawFooter(String content){
   display.drawLine(0, 53, display.width(), 53, SSD1306_WHITE);
@@ -30,7 +30,7 @@ void drawFooter(String content){
   
 }
 
-void drawGraph(){
+/*void drawGraph(){
   for(int i=0; i<128; i++){
     if(temp_storage[i]>0){
       display.drawPixel(i, map(temp_storage[i],20,250,51,0), SSD1306_WHITE);
@@ -45,7 +45,7 @@ void addSampleTemp(){
     temp_storage[int((millis()-time_start)/(240000.0/128.0))] = 20.0+1.5*(millis()-time_start)/1000.0;
   }
   
-}
+}*/
 
 void setup() {
   
@@ -56,22 +56,42 @@ void setup() {
 
   display.clearDisplay();
 
-  drawFooter(String(132.50)+" --> "+String(150.0));
+  //drawFooter(String(132.50)+" --> "+String(150.0));
 
   delay(2000);
 
   time_start = millis();
+
   
 }
 
 void loop() {
- /* display.clear();
-  
-  if(millis()-last_storage > 240000.0/128.0){
-    addSampleTemp();
 
-    last_storage=millis();
-  }
-*/
+  display.drawRoundRect(0, 0, 128, 43, 5, SSD1306_WHITE);
+
+  display.drawRoundRect(0, 43, 32, 21, 5, SSD1306_WHITE);
+  display.drawRoundRect(96, 43, 32, 21, 5, SSD1306_WHITE);
+
+  display.setTextSize(4);      // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE); // Draw white text
+  display.setCursor(30, 8);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+
+  display.write('2');
+  display.write('0');
+  display.write('8');
+
+  display.setTextSize(1);
+  display.setCursor(55, 50);
+
+  display.write('2');
+  display.write('4');
+  display.write('0');
+
+ 
+  display.display();
+
+  delay(1000);
+
 
 }
