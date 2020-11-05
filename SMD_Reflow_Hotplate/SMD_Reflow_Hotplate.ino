@@ -19,7 +19,7 @@ extern "C" {
 #define THERMO_CS             2
 #define THERMO_CLK            14
 
-#define GFX_TIME_PER_PIXEL    2350  //240.000ms/128px = 1875
+#define GFX_REFRESH_TIME      1000
 
 #define ENCODER_CLK           15
 #define ENCODER_DT            13
@@ -104,25 +104,29 @@ void drawInterface(){
 
   display.drawRoundRect(0, 43, 32, 21, 5, SSD1306_WHITE);
   display.drawRoundRect(96, 43, 32, 21, 5, SSD1306_WHITE);
-
+  
   display.setTextSize(4);      
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(30, 8);     
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
 
-  display.write(input_temp);
-  //display.write('2');
-  //display.write('0');
-  //display.write('8');
+  String content;
 
+  content = String(int(input_temp));
+
+  for(int i=0; i<content.length(); i++){
+    display.write(content.charAt(i));
+  }
+  
   display.setTextSize(1);
   display.setCursor(55, 50);
 
-  display.write('2');
-  display.write('4');
-  display.write('0');
+  content = String(int(temp_setpoint));
 
- 
+  for(int i=0; i<content.length(); i++){
+    display.write(content.charAt(i));
+  }
+  
   display.display();
 }
 
@@ -228,7 +232,7 @@ void changeReflowToCycle(int cycle){
 }
   
 void setup() {
-  //Serial.begin(9600);
+  Serial.begin(115200);
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(ENCODER_SW, INPUT);
 
@@ -370,17 +374,13 @@ void loop() {
   input_temp = input_isr;
   interrupts();
 
-  /*if(millis() - last_draw > GFX_TIME_PER_PIXEL){
-    if(reflow_cycle > 1){
-      updateGraph(input_temp);
-    }
-    
-    drawFooter(input_temp);
-
+  if(millis() - last_draw > GFX_REFRESH_TIME){
+    drawInterface();
+   
     last_draw = millis();
 
     
-  }*/
+  }
 
   if(reflow_cycle == 1 && input_temp >= temp_setpoint && (millis() - last_cycle_change > 60000)) changeReflowToCycle(2);
   else if((reflow_cycle == 2 || reflow_cycle == 4) && input_temp >= temp_setpoint) changeReflowToCycle(reflow_cycle+1);
