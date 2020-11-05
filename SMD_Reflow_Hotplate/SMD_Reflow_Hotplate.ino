@@ -1,6 +1,9 @@
 #include "max6675.h"
 #include <PID_v1.h>
-#include <TimerOne.h>
+
+extern "C" {
+#include "user_interface.h"
+}
 
 #include <SPI.h>
 #include <Wire.h>
@@ -9,18 +12,18 @@
 
 #include <Encoder.h>
 
-#define RELAY_PIN             6
+#define RELAY_PIN             16
 #define RELAY_WINDOW          2500
 
 #define THERMO_DO             12
-#define THERMO_CS             10
-#define THERMO_CLK            13
+#define THERMO_CS             2
+#define THERMO_CLK            14
 
 #define GFX_TIME_PER_PIXEL    2350  //240.000ms/128px = 1875
 
-#define ENCODER_CLK           4
-#define ENCODER_DT            3
-#define ENCODER_SW            2
+#define ENCODER_CLK           15
+#define ENCODER_DT            13
+#define ENCODER_SW            0
 
   /*******
   0: Config menu
@@ -82,42 +85,48 @@ int next_pixel_idx = 0;
 Encoder encoder(ENCODER_DT, ENCODER_CLK);
 volatile int menu_setting = 0;
 
-void drawFooter(float temperature){
-  display.drawLine(0, 53, display.width(), 53, SSD1306_WHITE);
+os_timer_t Timer1;
 
-  for(int x=0; x<128; x++){
-    for(int y=54; y<64; y++){
-      display.drawPixel(x, y, SSD1306_BLACK);
-    }
-  }
 
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(SSD1306_WHITE); // Draw white text
-  display.setCursor(15, 55);     // Start at top-left corner
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
- 
-  String content = String(temperature);
-  content += " --> ";
-  content += String(temp_setpoint);
-  
-  for(int i=0; i<content.length(); i++){
-    display.write(content.charAt(i));
-  }
-
-  display.display();
-  
-}
-
-void updateGraph(float temperature){
+/*void updateGraph(float temperature){
   
   display.drawPixel(next_pixel_idx, map(temperature,20,250,51,0), SSD1306_WHITE);
 
   next_pixel_idx++;
 
   display.display();
+}*/
+
+void drawInterface(){
+  display.clearDisplay();
+
+  display.drawRoundRect(0, 0, 128, 43, 5, SSD1306_WHITE);
+
+  display.drawRoundRect(0, 43, 32, 21, 5, SSD1306_WHITE);
+  display.drawRoundRect(96, 43, 32, 21, 5, SSD1306_WHITE);
+
+  display.setTextSize(4);      
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(30, 8);     
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+
+  display.write(input_temp);
+  //display.write('2');
+  //display.write('0');
+  //display.write('8');
+
+  display.setTextSize(1);
+  display.setCursor(55, 50);
+
+  display.write('2');
+  display.write('4');
+  display.write('0');
+
+ 
+  display.display();
 }
 
-void fetchData(void){
+void fetchData(void *pArg){
   input_isr = thermocouple.readCelsius();
   temp_updated = true;
   //Serial.println(input_isr, 2);
@@ -344,8 +353,8 @@ void setup() {
   PID_slope.SetSampleTime(RELAY_WINDOW);
   
   // Fetch sensor data every 500ms
-  Timer1.initialize(500000);
-  Timer1.attachInterrupt(fetchData);
+  os_timer_setfn(&Timer1, fetchData, NULL);
+  os_timer_arm(&Timer1, 500, true);
   
   //turn the PID on
   PID_temp.SetMode(AUTOMATIC);
@@ -361,7 +370,7 @@ void loop() {
   input_temp = input_isr;
   interrupts();
 
-  if(millis() - last_draw > GFX_TIME_PER_PIXEL){
+  /*if(millis() - last_draw > GFX_TIME_PER_PIXEL){
     if(reflow_cycle > 1){
       updateGraph(input_temp);
     }
@@ -371,7 +380,7 @@ void loop() {
     last_draw = millis();
 
     
-  }
+  }*/
 
   if(reflow_cycle == 1 && input_temp >= temp_setpoint && (millis() - last_cycle_change > 60000)) changeReflowToCycle(2);
   else if((reflow_cycle == 2 || reflow_cycle == 4) && input_temp >= temp_setpoint) changeReflowToCycle(reflow_cycle+1);
