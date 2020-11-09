@@ -19,11 +19,15 @@ extern "C" {
 #define THERMO_CS             2
 #define THERMO_CLK            14
 
+#define TEMP_OFFSET           10
+
 #define GFX_REFRESH_TIME      1000
 
 #define ENCODER_CLK           15
 #define ENCODER_DT            13
 #define ENCODER_SW            0
+
+#define INDICATORS            13
 
   /*******
   0: Config menu
@@ -61,7 +65,7 @@ float output_pid_series;
 MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
 //Specify the links and initial tuning parameters
-double Kp_temp=5.7, Ki_temp=0.1, Kd_temp=73;
+double Kp_temp=5.7, Ki_temp=0.15, Kd_temp=100;     // P 5.7   I 0.1   D  73
 PID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, Kp_temp, Ki_temp, Kd_temp, DIRECT);
 
 double Kp_slope=200, Ki_slope=0, Kd_slope=0;
@@ -77,6 +81,8 @@ long last_cycle_change = 0;
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+Adafruit_NeoPixel indicators = Adafruit_NeoPixel(2, PIN, NEO_GRBW + NEO_KHZ800);
 
 
 long last_draw = 0;
@@ -157,6 +163,9 @@ void enc_SW(void){
   else if(reflow_cycle == 1){
     //changeReflowToCycle(2);
   }
+  else if(reflow_cycle == 5){
+    changeReflowToCycle(6);
+  }
   
 
   interrupts();
@@ -236,6 +245,9 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(ENCODER_SW, INPUT);
 
+  indicators.begin();
+  indicators.show();
+
   attachInterrupt(digitalPinToInterrupt(ENCODER_SW), enc_SW, FALLING);
   
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
@@ -244,6 +256,8 @@ void setup() {
   }
 
   display.clearDisplay();
+  display.display();
+  delay(500);
 
   //initialize the variables we're linked to
   changeReflowToCycle(0);
@@ -371,7 +385,7 @@ void setup() {
 void loop() {  
   
   noInterrupts();
-  input_temp = input_isr;
+  input_temp = input_isr + TEMP_OFFSET;
   interrupts();
 
   if(millis() - last_draw > GFX_REFRESH_TIME){
@@ -383,9 +397,9 @@ void loop() {
   }
 
   if(reflow_cycle == 1 && input_temp >= temp_setpoint && (millis() - last_cycle_change > 60000)) changeReflowToCycle(2);
-  else if((reflow_cycle == 2 || reflow_cycle == 4) && input_temp >= temp_setpoint) changeReflowToCycle(reflow_cycle+1);
+  else if((reflow_cycle == 2 || reflow_cycle == 4) && input_temp >= temp_setpoint-5) changeReflowToCycle(reflow_cycle+1);
   else if(reflow_cycle == 3 && (millis() - last_cycle_change > 20000)) changeReflowToCycle(4);
-  else if(reflow_cycle == 5 && (millis() - last_cycle_change > 30000)) changeReflowToCycle(6);
+  //else if(reflow_cycle == 5 && (millis() - last_cycle_change > 30000)) changeReflowToCycle(6);
     
   // Shift last 5 temps to left and add current temp
   if(temp_updated){
