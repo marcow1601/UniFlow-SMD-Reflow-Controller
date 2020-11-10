@@ -10,24 +10,42 @@ extern "C" {
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#include <Encoder.h>
+#include <Adafruit_NeoPixel.h>
 
-#define RELAY_PIN             16
+#include <Encoder.h>
+#include <Adafruit_MCP23017.h>
+
+// General defines
+
 #define RELAY_WINDOW          2500
+#define GFX_REFRESH_TIME      1000
+#define TEMP_OFFSET           10
+
+// ESP12 GPIOs
 
 #define THERMO_DO             12
 #define THERMO_CS             2
 #define THERMO_CLK            14
 
-#define TEMP_OFFSET           10
-
-#define GFX_REFRESH_TIME      1000
-
-#define ENCODER_CLK           15
-#define ENCODER_DT            13
-#define ENCODER_SW            0
-
 #define INDICATORS            13
+
+// MCP23017 GPIOs
+
+#define ENCODER_CLK           0   // GPA0
+#define ENCODER_DT            1   // GPA1
+#define ENCODER_SW            2   // GPA2
+
+#define DIP_4                 3   // GPA3
+#define DIP_3                 4   // GPA4
+#define DIP_2                 5   // GPA5
+#define DIP_1                 6   // GPA6
+
+#define RELAY_PIN             8   // GPB0
+#define GPIO_B1               9   // GPB1
+#define GPIO_B2               10  // GPB2
+#define GPIO_B3               11  // GPB3
+#define GPIO_B4               12  // GPB4
+
 
   /*******
   0: Config menu
@@ -62,6 +80,8 @@ double output_pid_temp;
 
 float output_pid_series;
 
+Adafruit_MCP23017 mcp;
+
 MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
 //Specify the links and initial tuning parameters
@@ -82,7 +102,7 @@ long last_cycle_change = 0;
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-Adafruit_NeoPixel indicators = Adafruit_NeoPixel(2, PIN, NEO_GRBW + NEO_KHZ800);
+Adafruit_NeoPixel indicators = Adafruit_NeoPixel(2, INDICATORS, NEO_GRBW + NEO_KHZ800);
 
 
 long last_draw = 0;
@@ -242,10 +262,17 @@ void changeReflowToCycle(int cycle){
   
 void setup() {
   Serial.begin(115200);
+
+  Serial.println("Welcome to UniFlow");
+
+  mcp.begin();      // use default address 0 for MCP23017
+  
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(ENCODER_SW, INPUT);
 
   indicators.begin();
+  indicators.setPixelColor(0, indicators.Color(0,100,0));
+  indicators.setPixelColor(1, indicators.Color(100,0,0));
   indicators.show();
 
   attachInterrupt(digitalPinToInterrupt(ENCODER_SW), enc_SW, FALLING);
