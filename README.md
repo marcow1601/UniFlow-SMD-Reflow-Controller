@@ -1,4 +1,4 @@
-# SMD Reflow Hotplate
+# UniFlow SMD Reflow Controller
 
 ## Introduction
 
