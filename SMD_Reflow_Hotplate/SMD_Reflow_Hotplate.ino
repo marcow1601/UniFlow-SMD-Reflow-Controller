@@ -12,14 +12,14 @@ extern "C" {
 
 #include <Adafruit_NeoPixel.h>
 
-#include <Encoder.h>
-#include <Adafruit_MCP23017.h>
+#include <MCP23017.h>
 
 // General defines
 
 #define RELAY_WINDOW          2500
 #define GFX_REFRESH_TIME      1000
 #define TEMP_OFFSET           10
+#define MCP_ADDRESS 0x20
 
 // ESP12 GPIOs
 
@@ -27,7 +27,9 @@ extern "C" {
 #define THERMO_CS             2
 #define THERMO_CLK            14
 
-#define INDICATORS            13
+#define INDICATORS            15
+
+#define MCP_INT               13
 
 // MCP23017 GPIOs
 
@@ -40,11 +42,11 @@ extern "C" {
 #define DIP_2                 5   // GPA5
 #define DIP_1                 6   // GPA6
 
-#define RELAY_PIN             8   // GPB0
-#define GPIO_B1               9   // GPB1
-#define GPIO_B2               10  // GPB2
-#define GPIO_B3               11  // GPB3
-#define GPIO_B4               12  // GPB4
+#define RELAY_PIN             0   // GPB0
+#define GPIO_B1               1   // GPB1
+#define GPIO_B2               2  // GPB2
+#define GPIO_B3               3  // GPB3
+#define GPIO_B4               4  // GPB4
 
 
   /*******
@@ -80,7 +82,12 @@ double output_pid_temp;
 
 float output_pid_series;
 
-Adafruit_MCP23017 mcp;
+MCP23017 mcp(MCP_ADDRESS);
+volatile boolean mcp_interrupt = false;
+byte intCapReg;
+uint8_t encLastInternal = 0;
+volatile int16_t encoderPositionISR = 0;
+int16_t encoderPosition = 0;
 
 MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
@@ -104,11 +111,9 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 Adafruit_NeoPixel indicators = Adafruit_NeoPixel(2, INDICATORS, NEO_GRBW + NEO_KHZ800);
 
-
 long last_draw = 0;
 int next_pixel_idx = 0;
 
-Encoder encoder(ENCODER_DT, ENCODER_CLK);
 volatile int menu_setting = 0;
 
 os_timer_t Timer1;
@@ -162,20 +167,49 @@ void fetchData(void *pArg){
   //Serial.println(input_isr, 2);
 }
 
-void enc_SW(void){
-  noInterrupts();
-  delay(750);
+void mcpInterruptISR(){
+  handleMCPInterrupt();
+  //mcp_interrupt = true;
+}
+
+void handleMCPInterrupt(){
+  
+  byte intFlagReg, eventPin; 
+  intFlagReg = mcp.getIntFlag(A);
+  eventPin = log(intFlagReg)/log(2);
+  intCapReg = mcp.getIntCap(A);
+  //Serial.print("Interrupt! ");
+  //Serial.println(eventPin);
+  //Serial.println(intCapReg, BIN);
+
+  if(((~intCapReg)>>2) & 1 == 1) enc_SW();
+  else {
+    uint8_t encInternal = intCapReg & 3;
+    if(encLastInternal == 0 && encInternal == 3) ++encoderPositionISR;
+    else if(encLastInternal == 2 && encInternal == 1) --encoderPositionISR;
+
+    encLastInternal = encInternal;
+  }
+
+  mcp_interrupt = false; 
+  
+}
+
+
+void enc_SW(){
+  
+  delay(150);
   if(reflow_cycle == 0){
     if(menu_setting == 0){
-      standby_temp = int(standby_temp+int(encoder.readAndReset()/4.0));
+      standby_temp = int(standby_temp+readAndResetEncoder());
       menu_setting = 1;
     }
     else if(menu_setting == 1){
-      preheat_temp = int(preheat_temp+int(encoder.readAndReset()/4.0));
+      preheat_temp = int(preheat_temp+readAndResetEncoder());
       menu_setting = 2;
     }
     else if(menu_setting == 2){
-      reflow_temp = int(reflow_temp+int(encoder.readAndReset()/4.0));
+      reflow_temp = int(reflow_temp+readAndResetEncoder());
       menu_setting = 3;
     }
     else changeReflowToCycle(1);
@@ -187,8 +221,25 @@ void enc_SW(void){
     changeReflowToCycle(6);
   }
   
+}
 
+int readEncoder(){
+  noInterrupts();
+  encoderPosition += encoderPositionISR;
+  encoderPositionISR = 0;
   interrupts();
+
+  return encoderPosition;
+}
+int readAndResetEncoder(){
+  int encoder;
+  noInterrupts();
+  encoder = encoderPosition+encoderPositionISR;
+  encoderPositionISR = 0;
+  interrupts();
+  encoderPosition = 0;
+
+  return encoder;
 }
 
 double calculateLinRegSlope(void){
@@ -265,17 +316,53 @@ void setup() {
 
   Serial.println("Welcome to UniFlow");
 
-  mcp.begin();      // use default address 0 for MCP23017
+
+  /*#################################
+   * MCP23017 I2C Port Expander Setup
+   ##################################*/
+   
+  mcp.Init();
+
+  pinMode(MCP_INT, INPUT);
+
+  mcp.setPinMode(ENCODER_CLK, A, 0);
+  mcp.setPinMode(ENCODER_DT, A, 0);
+  mcp.setPinMode(ENCODER_SW, A, 0);
+
+  mcp.setPinMode(DIP_1, A, 0);
+  mcp.setPinMode(DIP_2, A, 0);
+  mcp.setPinMode(DIP_3, A, 0);
+  mcp.setPinMode(DIP_4, A, 0);
   
-  pinMode(RELAY_PIN, OUTPUT);
-  pinMode(ENCODER_SW, INPUT);
+  mcp.setPinMode(RELAY_PIN, B, 1);
+  
+  /*mcp.pinMode(GPIO_B1, OUTPUT);
+  mcp.pinMode(GPIO_B2, OUTPUT);
+  mcp.pinMode(GPIO_B3, OUTPUT);
+  mcp.pinMode(GPIO_B4, OUTPUT);*/
+
+  attachInterrupt(digitalPinToInterrupt(MCP_INT), mcpInterruptISR, FALLING);
+
+  mcp.setInterruptPinPol(LOW); // set INTA and INTB active-low
+  delay(10);
+  mcp.setInterruptOnChangePort(B00000101, A); // set Port A pins 0 and 2 as interrupt pins
+  mcp_interrupt=false;
+
+  intCapReg = mcp.getIntCap(A); // ensures that existing interrupts are cleared
+  
+  /*#################################
+   * SK6812 LED Setup
+   ##################################*/
 
   indicators.begin();
   indicators.setPixelColor(0, indicators.Color(0,100,0));
   indicators.setPixelColor(1, indicators.Color(100,0,0));
   indicators.show();
 
-  attachInterrupt(digitalPinToInterrupt(ENCODER_SW), enc_SW, FALLING);
+
+  /*#################################
+   * 0.96" OLED Setup
+   ##################################*/
   
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     //Serial.println(F("SSD1306 allocation failed"));
@@ -286,11 +373,21 @@ void setup() {
   display.display();
   delay(500);
 
+
+  /*#################################
+   * Program initialization
+   ##################################*/
+
   //initialize the variables we're linked to
   changeReflowToCycle(0);
 
    // In setup/standby mode
   while(reflow_cycle == 0){
+    
+    intCapReg = mcp.getIntCap(A);
+        
+    if(mcp_interrupt) handleMCPInterrupt();
+    
     display.clearDisplay();
     
     if(menu_setting == 0){
@@ -308,7 +405,7 @@ void setup() {
       display.setTextSize(5);
       display.setCursor(30, 15);
 
-      content = String(int(standby_temp+int(encoder.read()/4.0)));
+      content = String(int(standby_temp+readEncoder()));
 
        for(int i=0; i<content.length(); i++){
         display.write(content.charAt(i));
@@ -332,7 +429,7 @@ void setup() {
       display.setTextSize(5);
       display.setCursor(15, 15);
 
-      content = String(int(preheat_temp+int(encoder.read()/4.0)));
+      content = String(int(preheat_temp+readEncoder()));
 
        for(int i=0; i<content.length(); i++){
         display.write(content.charAt(i));
@@ -355,7 +452,7 @@ void setup() {
       display.setTextSize(5);
       display.setCursor(15, 15);
 
-      content = String(int(reflow_temp+int(encoder.read()/4.0)));
+      content = String(int(reflow_temp+readEncoder()));
 
        for(int i=0; i<content.length(); i++){
         display.write(content.charAt(i));
@@ -471,10 +568,10 @@ void loop() {
   }
   
   if (relay_dc > millis() - windowStartTime){
-    digitalWrite(RELAY_PIN, HIGH);
+    //digitalWrite(RELAY_PIN, HIGH);
   }
   else{
-    digitalWrite(RELAY_PIN, LOW);
+    //digitalWrite(RELAY_PIN, LOW);
   }
   
   
