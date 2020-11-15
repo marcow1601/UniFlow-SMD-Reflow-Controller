@@ -37,7 +37,7 @@ UniFlow is a completely ready-to-go solution for everything and anything requiri
 - [x] 4 general purpose switches
 - [x] 4 general purpose GPIOs
 
-The final version of UniFlow will soon be available for puchase here: ~~UniFlow in my Tindie Store~~
+The final version of UniFlow will soon be available for purchase here: ~~UniFlow in my Tindie Store~~
 
 <a href="https://www.tindie.com/stores/marcosprojects/?ref=offsite_badges&utm_source=sellers_marcosprojects&utm_medium=badges&utm_campaign=badge_medium" target="_blank"><img src="https://d2ss6ovg47m0r5.cloudfront.net/badges/tindie-mediums.png" alt="I sell on Tindie" width="150" height="78"></a>
 
@@ -47,6 +47,7 @@ The final version of UniFlow will soon be available for puchase here: ~~UniFlow 
 To compile this software using the Arduino IDE the following non-standard libraries will be required:
 
 * Adafruit SSD1306 ([Adafruit on GitHub](https://github.com/adafruit/Adafruit_SSD1306))
+* Adafruit GFK ([Adafruit on GitHub](https://github.com/adafruit/Adafruit-GFX-Library))
 * Adafruit Neopixel ([Adafruit on GitHub](https://github.com/adafruit/Adafruit_NeoPixel))
 * Adafruit MAX6675 with a modification explained [here](https://github.com/adafruit/MAX6675-library/issues/9) ([Adafruit on Github](https://github.com/adafruit/MAX6675-library))
 * MCP23017_WE ([wollewald on GitHub](https://github.com/wollewald/MCP23017_WE))
