@@ -108,6 +108,7 @@ long last_cycle_change = 0;
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+String content;
 
 Adafruit_NeoPixel indicators = Adafruit_NeoPixel(2, INDICATORS, NEO_GRBW + NEO_KHZ800);
 
@@ -140,8 +141,6 @@ void drawInterface(){
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(30, 8);     
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
-
-  String content;
 
   content = String(int(input_temp));
 
@@ -351,16 +350,6 @@ void setup() {
   intCapReg = mcp.getIntCap(A); // ensures that existing interrupts are cleared
   
   /*#################################
-   * SK6812 LED Setup
-   ##################################*/
-
-  indicators.begin();
-  indicators.setPixelColor(0, indicators.Color(0,100,0));
-  indicators.setPixelColor(1, indicators.Color(100,0,0));
-  indicators.show();
-
-
-  /*#################################
    * 0.96" OLED Setup
    ##################################*/
   
@@ -370,10 +359,55 @@ void setup() {
   }
 
   display.clearDisplay();
+
+  display.setTextColor(SSD1306_WHITE); // Draw white text
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  
+  display.setTextSize(1);
+  display.setCursor(30, 10); 
+  content = "Welcome to";
+  
+  for(int i=0; i<content.length(); i++){
+    display.write(content.charAt(i));
+  }
+
+  display.setTextSize(2);
+  display.setCursor(20, 30); 
+  content = "UniFlow";
+
+  for(int i=0; i<content.length(); i++){
+    display.write(content.charAt(i));
+  }
+  
   display.display();
-  delay(500);
+  
+  /*#################################
+   * SK6812 LED Setup
+   ##################################*/
 
+  indicators.begin();
+  indicators.setPixelColor(0, indicators.Color(0,0,0,150));
+  indicators.setPixelColor(1, indicators.Color(0,0,0,0));
+  indicators.show();
+  delay(250);
+  indicators.setPixelColor(0, indicators.Color(0,0,0,0));
+  indicators.setPixelColor(1, indicators.Color(0,0,0,150));
+  indicators.show();
+  delay(250);
+  indicators.setPixelColor(0, indicators.Color(0,0,0,150));
+  indicators.setPixelColor(1, indicators.Color(0,0,0,0));
+  indicators.show();
+  delay(250);
+  indicators.setPixelColor(0, indicators.Color(0,0,0,0));
+  indicators.setPixelColor(1, indicators.Color(0,0,0,150));
+  indicators.show();
+  delay(250);
+  indicators.setPixelColor(0, indicators.Color(130,60,0,0));
+  indicators.setPixelColor(1, indicators.Color(130,60,0,0));
+  indicators.show();
+  delay(1500);
 
+  
   /*#################################
    * Program initialization
    ##################################*/
@@ -396,7 +430,7 @@ void setup() {
       display.setCursor(30, 0);     // Start at top-left corner
       display.cp437(true);         // Use full 256 char 'Code Page 437' font
      
-      String content = "Set Standby";
+      content = "Set Standby";
       
       for(int i=0; i<content.length(); i++){
         display.write(content.charAt(i));
@@ -420,7 +454,7 @@ void setup() {
       display.setCursor(25, 0);     // Start at top-left corner
       display.cp437(true);         // Use full 256 char 'Code Page 437' font
      
-      String content = "Set Preheat";
+      content = "Set Preheat";
       
       for(int i=0; i<content.length(); i++){
         display.write(content.charAt(i));
@@ -443,7 +477,7 @@ void setup() {
       display.setCursor(25, 0);     // Start at top-left corner
       display.cp437(true);         // Use full 256 char 'Code Page 437' font
      
-      String content = "Set Reflow";
+      content = "Set Reflow";
       
       for(int i=0; i<content.length(); i++){
         display.write(content.charAt(i));
@@ -466,7 +500,7 @@ void setup() {
       display.setCursor(5, 20);     // Start at top-left corner
       display.cp437(true);         // Use full 256 char 'Code Page 437' font
      
-      String content = "START";
+      content = "START";
       
       for(int i=0; i<content.length(); i++){
         display.write(content.charAt(i));
@@ -568,10 +602,10 @@ void loop() {
   }
   
   if (relay_dc > millis() - windowStartTime){
-    //digitalWrite(RELAY_PIN, HIGH);
+    mcp.setPin(RELAY_PIN,B,HIGH);
   }
   else{
-    //digitalWrite(RELAY_PIN, LOW);
+    mcp.setPin(RELAY_PIN,B,LOW);
   }
   
   
