@@ -312,6 +312,7 @@ void changeReflowToCycle(int cycle){
   
 void setup() {
   Serial.begin(115200);
+  Wire.begin();
 
   Serial.println("Welcome to UniFlow");
 
@@ -319,7 +320,8 @@ void setup() {
   /*#################################
    * MCP23017 I2C Port Expander Setup
    ##################################*/
-   
+
+  Serial.print("MCP23017 Initialization... ");
   mcp.Init();
 
   pinMode(MCP_INT, INPUT);
@@ -348,10 +350,14 @@ void setup() {
   mcp_interrupt=false;
 
   intCapReg = mcp.getIntCap(A); // ensures that existing interrupts are cleared
+
+  Serial.println("completed!");
   
   /*#################################
    * 0.96" OLED Setup
    ##################################*/
+
+   Serial.print("SSD1306 OLED Initialization... ");
   
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     //Serial.println(F("SSD1306 allocation failed"));
@@ -380,6 +386,10 @@ void setup() {
   }
   
   display.display();
+
+  Serial.println("completed!");
+
+  Serial.println("Bootup sequence completed!");
   
   /*#################################
    * SK6812 LED Setup
@@ -412,6 +422,8 @@ void setup() {
    * Program initialization
    ##################################*/
 
+  Serial.println("Entering process parameter configuration");
+  
   //initialize the variables we're linked to
   changeReflowToCycle(0);
 
