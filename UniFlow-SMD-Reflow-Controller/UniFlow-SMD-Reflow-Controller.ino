@@ -192,55 +192,203 @@ void configurationMenu(){
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0,0);
-    content = "Main menu";
-    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
-
+    display.println(F("Main menu"));
+    
     display.setTextSize(1);
     
     if(readEncoder()%3 == 0){
-      display.fillRoundRect(0, 15, 128, 15, 3, SSD1306_WHITE);
+      display.fillRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
     else {
-      display.drawRoundRect(0, 15, 128, 15, 3, SSD1306_WHITE);
+      display.drawRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(10,20);
-    content = "General settings";
-    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
-    
+    display.setCursor(10,12);
+    display.println(F("General settings"));
+        
     if(readEncoder()%3 == 1){
-      display.fillRoundRect(0, 31, 128, 15, 3, SSD1306_WHITE);
+      display.fillRoundRect(0, 23, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(0, 31, 128, 15, 3, SSD1306_WHITE);
+      display.drawRoundRect(0, 23, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(10,35);
-    content = "Setpoints";
-    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
-    
+    display.setCursor(10,25);
+    display.println(F("Setpoints"));
+        
     if(readEncoder()%3 == 2){
-      display.fillRoundRect(0, 47, 128, 15, 3, SSD1306_WHITE);
+      display.fillRoundRect(0, 36, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(0, 47, 128, 15, 3, SSD1306_WHITE);
+      display.drawRoundRect(0, 36, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(10,50);
-    content = "PID parameters";
-    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
-  
+    display.setCursor(10,38);
+    display.println(F("PID parameters"));
+      
     if(encClicked){
       delay(150);
-      menu_setting = readAndResetEncoder()%3;
+      encClicked = false;
+      menu_setting = readAndResetEncoder()%3 + 1;
     }
   }
+
+  /*
+   * General settings
+   */
+  else if(menu_setting == 1){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println(F("General settings"));
+
+    if(encClicked){
+      delay(150);
+      encClicked = false;
+      menu_setting = 0;
+    }
+  }
+
+  /*
+   * Setpoints
+   */
+  else if(menu_setting == 2){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println(F("Setpoints"));
+
+    if(readEncoder()%4 == 0){
+      display.fillRoundRect(0, 10, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK); 
+    }
+    else {
+      display.drawRoundRect(0, 10, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(6,15);
+    display.println(F("Profile 1"));
+
+    if(readEncoder()%4 == 1){
+      display.fillRoundRect(64, 10, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK); 
+    }
+    else {
+      display.drawRoundRect(64, 10, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(70,15);
+    display.println(F("Profile 2"));
+
+    if(readEncoder()%4 == 2){
+      display.fillRoundRect(0, 29, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK); 
+    }
+    else {
+      display.drawRoundRect(0, 29, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(6,34);
+    display.println(F("Profile 3"));
+
+    if(readEncoder()%4 == 3){
+      display.fillRoundRect(64, 29, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK); 
+    }
+    else {
+      display.drawRoundRect(64, 29, 63, 18, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(70,34);
+    display.println(F("Profile 4"));
+
+    if(encClicked){
+      delay(150);
+      encClicked = false;
+      menu_setting = readAndResetEncoder()%4 + 20;
+    }
+  }
+
+  else if(menu_setting == 20){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println(F("Setpoints - Profile 1"));
+
+
+
+    if(encClicked){
+      delay(150);
+      encClicked = false;
+      menu_setting = 2;
+    }
+  }
+  else if(menu_setting == 21){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println(F("Setpoints - Profile 2"));
+
+
+    if(encClicked){
+      delay(150);
+      encClicked = false;
+      menu_setting = 2;
+    }
+  }
+  else if(menu_setting == 22){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println(F("Setpoints - Profile 3"));
+
+
+    if(encClicked){
+      delay(150);
+      encClicked = false;
+      menu_setting = 2;
+    }
+  }
+  else if(menu_setting == 23){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println(F("Setpoints - Profile 4"));
+
+
+    if(encClicked){
+      delay(150);
+      encClicked = false;
+      menu_setting = 2;
+    }
+  }
+
+  /*
+   * PID parameters
+   */
+  else if(menu_setting == 3){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println(F("PID parameters"));
+
+    if(encClicked){
+      delay(150);
+      encClicked = false;
+      menu_setting = 0;
+    }
+  }
+  
 
   display.display();  
 }
