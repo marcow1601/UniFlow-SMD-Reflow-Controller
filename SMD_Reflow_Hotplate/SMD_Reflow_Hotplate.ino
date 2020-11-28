@@ -7,6 +7,8 @@ extern "C" {
 
 #include <SPI.h>
 #include <Wire.h>
+#include <EEPROM.h>
+
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
@@ -83,20 +85,41 @@ double output_pid_temp;
 float output_pid_series;
 
 MCP23017 mcp(MCP_ADDRESS);
-volatile boolean mcp_interrupt = false;
+
 byte intCapReg;
-uint8_t encLastInternal = 0;
+volatile uint8_t encLastInternal = 0;
 volatile int16_t encoderPositionISR = 0;
 int16_t encoderPosition = 0;
+
+volatile boolean encClicked = false;
 
 MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
 //Specify the links and initial tuning parameters
-double Kp_temp=5.7, Ki_temp=0.15, Kd_temp=100;     // P 5.7   I 0.1   D  73
+float Kp_temp=5.7, Ki_temp=0.15, Kd_temp=100;     // P 5.7   I 0.1   D  73
 PID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, Kp_temp, Ki_temp, Kd_temp, DIRECT);
 
-double Kp_slope=200, Ki_slope=0, Kd_slope=0;
+float Kp_slope=200, Ki_slope=0, Kd_slope=0;
 PID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, Kp_slope, Ki_slope, Kd_slope, DIRECT);
+
+/***
+ * Setpoint and tuning parameter struct for persistent storage in EEPROM
+ ***/
+struct {
+  float tempPID[3];
+  float slopePID[3];
+  
+  float setpoints[4][8];
+  
+} persistence;
+
+const struct {
+  float tempPID[3] = {5.7, 0.15, 100.0};
+  float slopePID[3] = {200, 0, 0};
+  
+  float setpoints[4][8] = {{0,50,150,240,0,1.5,1.5,-3},{0,50,150,240,0,1.5,1.5,-3},{0,50,150,240,0,1.5,1.5,-3},{0,50,150,240,0,1.5,1.5,-3}};
+  
+} persistenceDefault;
 
 long time_start = 0;
 unsigned long windowStartTime;
@@ -140,7 +163,6 @@ void drawInterface(){
   display.setTextSize(4);      
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(30, 8);     
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
 
   content = String(int(input_temp));
 
@@ -160,6 +182,69 @@ void drawInterface(){
   display.display();
 }
 
+void configurationMenu(){
+  display.clearDisplay();
+
+  /*
+   *  Main menu
+   */   
+  if(menu_setting == 0){
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    content = "Main menu";
+    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
+
+    display.setTextSize(1);
+    
+    if(readEncoder()%3 == 0){
+      display.fillRoundRect(0, 15, 128, 15, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK); 
+    }
+    else {
+      display.drawRoundRect(0, 15, 128, 15, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,20);
+    content = "General settings";
+    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
+    
+    if(readEncoder()%3 == 1){
+      display.fillRoundRect(0, 31, 128, 15, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(0, 31, 128, 15, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,35);
+    content = "Setpoints";
+    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
+    
+    if(readEncoder()%3 == 2){
+      display.fillRoundRect(0, 47, 128, 15, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(0, 47, 128, 15, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,50);
+    content = "PID parameters";
+    for(int i=0; i<content.length(); i++){ display.write(content.charAt(i)); }
+  
+    if(encClicked){
+      delay(150);
+      menu_setting = readAndResetEncoder()%3;
+    }
+  }
+
+  display.display();  
+}
+
 void fetchData(void *pArg){
   input_isr = thermocouple.readCelsius();
   temp_updated = true;
@@ -167,8 +252,7 @@ void fetchData(void *pArg){
 }
 
 void mcpInterruptISR(){
-  handleMCPInterrupt();
-  //mcp_interrupt = true;
+  handleMCPInterrupt(); // Interrupt-event needs to be decoded immediately to catch fast rotation of rotary encoder
 }
 
 void handleMCPInterrupt(){
@@ -177,11 +261,9 @@ void handleMCPInterrupt(){
   intFlagReg = mcp.getIntFlag(A);
   eventPin = log(intFlagReg)/log(2);
   intCapReg = mcp.getIntCap(A);
-  //Serial.print("Interrupt! ");
-  //Serial.println(eventPin);
-  //Serial.println(intCapReg, BIN);
 
   if(((~intCapReg)>>2) & 1 == 1) enc_SW();
+  
   else {
     uint8_t encInternal = intCapReg & 3;
     if(encLastInternal == 0 && encInternal == 3) ++encoderPositionISR;
@@ -189,37 +271,12 @@ void handleMCPInterrupt(){
 
     encLastInternal = encInternal;
   }
-
-  mcp_interrupt = false; 
   
 }
 
 
 void enc_SW(){
-  
-  delay(150);
-  if(reflow_cycle == 0){
-    if(menu_setting == 0){
-      standby_temp = int(standby_temp+readAndResetEncoder());
-      menu_setting = 1;
-    }
-    else if(menu_setting == 1){
-      preheat_temp = int(preheat_temp+readAndResetEncoder());
-      menu_setting = 2;
-    }
-    else if(menu_setting == 2){
-      reflow_temp = int(reflow_temp+readAndResetEncoder());
-      menu_setting = 3;
-    }
-    else changeReflowToCycle(1);
-  }
-  else if(reflow_cycle == 1){
-    //changeReflowToCycle(2);
-  }
-  else if(reflow_cycle == 5){
-    changeReflowToCycle(6);
-  }
-  
+  encClicked = true;
 }
 
 int readEncoder(){
@@ -313,9 +370,10 @@ void changeReflowToCycle(int cycle){
 void setup() {
   Serial.begin(115200);
   Wire.begin();
+  Wire.setClock(100000L);
+  delay(500);
 
   Serial.println("Welcome to UniFlow");
-
 
   /*#################################
    * MCP23017 I2C Port Expander Setup
@@ -337,17 +395,17 @@ void setup() {
   
   mcp.setPinMode(RELAY_PIN, B, 1);
   
-  /*mcp.pinMode(GPIO_B1, OUTPUT);
-  mcp.pinMode(GPIO_B2, OUTPUT);
-  mcp.pinMode(GPIO_B3, OUTPUT);
-  mcp.pinMode(GPIO_B4, OUTPUT);*/
+  /*mcp.pinMode(GPIO_B1, B, 1);
+  mcp.pinMode(GPIO_B2, B, 1);
+  mcp.pinMode(GPIO_B3, B, 1);
+  mcp.pinMode(GPIO_B4, B, 1);*/
 
   attachInterrupt(digitalPinToInterrupt(MCP_INT), mcpInterruptISR, FALLING);
 
   mcp.setInterruptPinPol(LOW); // set INTA and INTB active-low
   delay(10);
   mcp.setInterruptOnChangePort(B00000101, A); // set Port A pins 0 and 2 as interrupt pins
-  mcp_interrupt=false;
+  
 
   intCapReg = mcp.getIntCap(A); // ensures that existing interrupts are cleared
 
@@ -423,6 +481,15 @@ void setup() {
    ##################################*/
 
   Serial.println("Entering process parameter configuration");
+
+  EEPROM.begin(sizeof(persistence));
+  EEPROM.get(0,persistence);
+  
+  if(!(persistence.tempPID[0]>0 && persistence.tempPID[0]<1000)){
+    memcpy(&persistence, &persistenceDefault, sizeof(persistenceDefault));
+    EEPROM.put(0,persistence);
+    EEPROM.commit();
+  }
   
   //initialize the variables we're linked to
   changeReflowToCycle(0);
@@ -430,96 +497,10 @@ void setup() {
    // In setup/standby mode
   while(reflow_cycle == 0){
     
-    intCapReg = mcp.getIntCap(A);
-        
-    if(mcp_interrupt) handleMCPInterrupt();
+    intCapReg = mcp.getIntCap(A); // Make sure MCP interrupts are cleared
     
-    display.clearDisplay();
+    configurationMenu();
     
-    if(menu_setting == 0){
-      display.setTextSize(1);      // Normal 1:1 pixel scale
-      display.setTextColor(SSD1306_WHITE); // Draw white text
-      display.setCursor(30, 0);     // Start at top-left corner
-      display.cp437(true);         // Use full 256 char 'Code Page 437' font
-     
-      content = "Set Standby";
-      
-      for(int i=0; i<content.length(); i++){
-        display.write(content.charAt(i));
-      }
-
-      display.setTextSize(5);
-      display.setCursor(30, 15);
-
-      content = String(int(standby_temp+readEncoder()));
-
-       for(int i=0; i<content.length(); i++){
-        display.write(content.charAt(i));
-      }
-    
-      display.display();
-      
-    }
-    else if(menu_setting == 1){
-      display.setTextSize(1);      // Normal 1:1 pixel scale
-      display.setTextColor(SSD1306_WHITE); // Draw white text
-      display.setCursor(25, 0);     // Start at top-left corner
-      display.cp437(true);         // Use full 256 char 'Code Page 437' font
-     
-      content = "Set Preheat";
-      
-      for(int i=0; i<content.length(); i++){
-        display.write(content.charAt(i));
-      }
-
-      display.setTextSize(5);
-      display.setCursor(15, 15);
-
-      content = String(int(preheat_temp+readEncoder()));
-
-       for(int i=0; i<content.length(); i++){
-        display.write(content.charAt(i));
-      }
-    
-      display.display();
-    }
-    else if(menu_setting == 2){
-      display.setTextSize(1);      // Normal 1:1 pixel scale
-      display.setTextColor(SSD1306_WHITE); // Draw white text
-      display.setCursor(25, 0);     // Start at top-left corner
-      display.cp437(true);         // Use full 256 char 'Code Page 437' font
-     
-      content = "Set Reflow";
-      
-      for(int i=0; i<content.length(); i++){
-        display.write(content.charAt(i));
-      }
-
-      display.setTextSize(5);
-      display.setCursor(15, 15);
-
-      content = String(int(reflow_temp+readEncoder()));
-
-       for(int i=0; i<content.length(); i++){
-        display.write(content.charAt(i));
-      }
-    
-      display.display();
-    }
-    else if(menu_setting == 3){
-      display.setTextSize(4);      // Normal 1:1 pixel scale
-      display.setTextColor(SSD1306_WHITE); // Draw white text
-      display.setCursor(5, 20);     // Start at top-left corner
-      display.cp437(true);         // Use full 256 char 'Code Page 437' font
-     
-      content = "START";
-      
-      for(int i=0; i<content.length(); i++){
-        display.write(content.charAt(i));
-      }
-
-      display.display();
-    }
   }
 
   display.clearDisplay();
