@@ -23,6 +23,8 @@ extern "C" {
 #define TEMP_OFFSET           10
 #define MCP_ADDRESS 0x20
 
+#define FORCERESET_EEPROM             false
+
 // ESP12 GPIOs
 
 #define THERMO_DO             12
@@ -109,7 +111,7 @@ struct {
   float tempPID[3];
   float slopePID[3];
   
-  float setpoints[4][8];
+  float setpoints[4][10];
   
 } persistence;
 
@@ -117,7 +119,7 @@ const struct {
   float tempPID[3] = {5.7, 0.15, 100.0};
   float slopePID[3] = {200, 0, 0};
   
-  float setpoints[4][8] = {{0,50,150,240,0,1.5,1.5,-3},{0,50,150,240,0,1.5,1.5,-3},{0,50,150,240,0,1.5,1.5,-3},{0,50,150,240,0,1.5,1.5,-3}};
+  float setpoints[4][10] = {{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60}};
   
 } persistenceDefault;
 
@@ -131,7 +133,6 @@ long last_cycle_change = 0;
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-String content;
 
 Adafruit_NeoPixel indicators = Adafruit_NeoPixel(2, INDICATORS, NEO_GRBW + NEO_KHZ800);
 
@@ -139,6 +140,7 @@ long last_draw = 0;
 int next_pixel_idx = 0;
 
 volatile int menu_setting = 0;
+volatile boolean displayRefresh = true;
 
 os_timer_t Timer1;
 
@@ -164,22 +166,49 @@ void drawInterface(){
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(30, 8);     
 
-  content = String(int(input_temp));
-
-  for(int i=0; i<content.length(); i++){
-    display.write(content.charAt(i));
-  }
+  display.println(input_temp);
   
   display.setTextSize(1);
   display.setCursor(55, 50);
 
-  content = String(int(temp_setpoint));
-
-  for(int i=0; i<content.length(); i++){
-    display.write(content.charAt(i));
-  }
-  
+  display.println(temp_setpoint);
+    
   display.display();
+}
+
+void parameterConfiguration(String pName, float* parameter, float increments){
+  int encoderPos = readAndResetEncoder();
+  
+  while(!encClicked){
+    
+    noInterrupts();
+    bool refresh = displayRefresh;
+    interrupts();
+    if(refresh){
+      display.clearDisplay();
+      display.setTextColor(SSD1306_WHITE);
+  
+      display.setTextSize(1);
+      display.setCursor(0,0);
+      display.println(pName);
+  
+      display.setTextSize(3);
+      display.setCursor(20,15);
+      display.println((*parameter)+increments*readEncoder());
+      
+      display.display();
+      noInterrupts();
+      displayRefresh = false;
+      interrupts();
+    }
+
+    yield(); // Prevent watchdog timeout
+  }
+
+  *parameter += increments*readAndResetEncoder();
+  setEncoder(encoderPos);
+  encClicked = false;
+  displayRefresh = true;
 }
 
 void configurationMenu(){
@@ -318,60 +347,98 @@ void configurationMenu(){
       menu_setting = readAndResetEncoder()%4 + 20;
     }
   }
+  if(menu_setting >= 20 && menu_setting <= 29){
 
-  else if(menu_setting == 20){
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0,0);
-    display.println(F("Setpoints - Profile 1"));
 
+    if(menu_setting == 20) display.println(F("Setpoints - Profile 1"));
+    else if(menu_setting == 21) display.println(F("Setpoints - Profile 2"));
+    else if(menu_setting == 22) display.println(F("Setpoints - Profile 3"));
+    else if(menu_setting == 23) display.println(F("Setpoints - Profile 4"));
 
+    display.setCursor(0,12);
+    display.println(F("<-Save"));
+    
+    display.drawLine(20,60,40,40,SSD1306_WHITE);
+    display.drawLine(40,40,60,40,SSD1306_WHITE);
+    display.drawLine(60,40,80,20,SSD1306_WHITE);
+    display.drawLine(80,20,105,20,SSD1306_WHITE);
+    display.drawLine(105,20,127,42,SSD1306_WHITE);
 
+    if(readEncoder() % 9 == 0) display.drawLine(0,54,19,54,SSD1306_WHITE);
+    else if(readEncoder() % 9 == 1) display.drawLine(30,59,50,59,SSD1306_WHITE);
+    else if(readEncoder() % 9 == 2) display.drawLine(13,33,33,33,SSD1306_WHITE);
+    else if(readEncoder() % 9 == 3) display.drawLine(42,30,62,30,SSD1306_WHITE);
+    else if(readEncoder() % 9 == 4) {
+      display.setRotation(1);
+      display.drawLine(30,48,50,48,SSD1306_WHITE);
+      display.setRotation(0);
+    }
+    else if(readEncoder() % 9 == 5) display.drawLine(53,13,73,13,SSD1306_WHITE);
+    else if(readEncoder() % 9 == 6) display.drawLine(87,10,107,10,SSD1306_WHITE);
+    else if(readEncoder() % 9 == 7) {
+      display.setRotation(1);
+      display.drawLine(30,24,50,24,SSD1306_WHITE);
+      display.setRotation(0);
+    }
+    else if(readEncoder() % 9 == 8) {
+      display.drawLine(0,21,35,21,SSD1306_WHITE);    
+    }
+
+    display.setCursor(1,56);
+    display.println(String(int(persistence.setpoints[menu_setting%20][1])) + "C");
+
+    display.setCursor(13,35);
+    display.println(String(int(persistence.setpoints[menu_setting%20][2])) + "C");
+
+    display.setCursor(42,32);
+    display.println(String(int(persistence.setpoints[menu_setting%20][8])) + "s");
+
+    display.setCursor(53,15);
+    display.println(String(int(persistence.setpoints[menu_setting%20][3])) + "C");
+
+    display.setCursor(87,12);
+    display.println(String(int(persistence.setpoints[menu_setting%20][9])) + "s");
+
+    //Slopes
+    
+    display.setCursor(30,50);
+    display.println(String(persistence.setpoints[menu_setting%20][5],1));
+
+    display.setRotation(1);
+    
+    display.setCursor(30,50);
+    display.println(String(persistence.setpoints[menu_setting%20][6],1));
+    
+    display.setCursor(30,15);
+    display.println(String(persistence.setpoints[menu_setting%20][7],1));
+
+    display.setRotation(0);
+    
     if(encClicked){
       delay(150);
       encClicked = false;
-      menu_setting = 2;
-    }
+      
+      if(readEncoder() % 9 == 0) parameterConfiguration(String("Standby temperature"), &persistence.setpoints[menu_setting%20][1], 1.0);
+      else if(readEncoder() % 9 == 1) parameterConfiguration(String("Amb.-Preheat slope"), &persistence.setpoints[menu_setting%20][5], 0.1);
+      else if(readEncoder() % 9 == 2) parameterConfiguration(String("Preheat temperature"), &persistence.setpoints[menu_setting%20][2], 1.0);
+      else if(readEncoder() % 9 == 3) parameterConfiguration(String("Preheat time"), &persistence.setpoints[menu_setting%20][8], 1.0);
+      else if(readEncoder() % 9 == 4) parameterConfiguration(String("Pr.heat-Reflow slope"), &persistence.setpoints[menu_setting%20][6], 0.1);
+      else if(readEncoder() % 9 == 5) parameterConfiguration(String("Reflow temperature"), &persistence.setpoints[menu_setting%20][3], 1.0);
+      else if(readEncoder() % 9 == 6) parameterConfiguration(String("Reflow time"), &persistence.setpoints[menu_setting%20][9], 1.0);
+      else if(readEncoder() % 9 == 7) parameterConfiguration(String("Cooldown slope"), &persistence.setpoints[menu_setting%20][7], 0.1);
+
+      else if(readEncoder() % 9 == 8){
+        EEPROM.put(0,persistence);
+        EEPROM.commit();
+        setEncoder(menu_setting%20);
+        menu_setting = 2;
+      }
+    }    
   }
-  else if(menu_setting == 21){
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0,0);
-    display.println(F("Setpoints - Profile 2"));
 
-
-    if(encClicked){
-      delay(150);
-      encClicked = false;
-      menu_setting = 2;
-    }
-  }
-  else if(menu_setting == 22){
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0,0);
-    display.println(F("Setpoints - Profile 3"));
-
-
-    if(encClicked){
-      delay(150);
-      encClicked = false;
-      menu_setting = 2;
-    }
-  }
-  else if(menu_setting == 23){
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0,0);
-    display.println(F("Setpoints - Profile 4"));
-
-
-    if(encClicked){
-      delay(150);
-      encClicked = false;
-      menu_setting = 2;
-    }
-  }
 
   /*
    * PID parameters
@@ -388,9 +455,6 @@ void configurationMenu(){
       menu_setting = 0;
     }
   }
-  
-
-  display.display();  
 }
 
 void fetchData(void *pArg){
@@ -400,7 +464,9 @@ void fetchData(void *pArg){
 }
 
 void mcpInterruptISR(){
+  noInterrupts();
   handleMCPInterrupt(); // Interrupt-event needs to be decoded immediately to catch fast rotation of rotary encoder
+  interrupts();
 }
 
 void handleMCPInterrupt(){
@@ -414,8 +480,14 @@ void handleMCPInterrupt(){
   
   else {
     uint8_t encInternal = intCapReg & 3;
-    if(encLastInternal == 0 && encInternal == 3) ++encoderPositionISR;
-    else if(encLastInternal == 2 && encInternal == 1) --encoderPositionISR;
+    if(encLastInternal == 0 && encInternal == 3){
+      ++encoderPositionISR;
+      displayRefresh = true;
+    }
+    else if(encLastInternal == 2 && encInternal == 1){
+      --encoderPositionISR;
+      displayRefresh = true;
+    }
 
     encLastInternal = encInternal;
   }
@@ -425,6 +497,7 @@ void handleMCPInterrupt(){
 
 void enc_SW(){
   encClicked = true;
+  displayRefresh = true;
 }
 
 int readEncoder(){
@@ -440,10 +513,15 @@ int readAndResetEncoder(){
   noInterrupts();
   encoder = encoderPosition+encoderPositionISR;
   encoderPositionISR = 0;
-  interrupts();
   encoderPosition = 0;
-
+  interrupts();
+  
   return encoder;
+}
+void setEncoder(int pos){
+  noInterrupts();
+  encoderPosition = pos;
+  interrupts();
 }
 
 double calculateLinRegSlope(void){
@@ -557,6 +635,8 @@ void setup() {
 
   intCapReg = mcp.getIntCap(A); // ensures that existing interrupts are cleared
 
+  setEncoder(0);
+
   Serial.println("completed!");
   
   /*#################################
@@ -577,19 +657,11 @@ void setup() {
   
   display.setTextSize(1);
   display.setCursor(30, 10); 
-  content = "Welcome to";
-  
-  for(int i=0; i<content.length(); i++){
-    display.write(content.charAt(i));
-  }
+  display.println(F("Welcome to"));
 
   display.setTextSize(2);
   display.setCursor(20, 30); 
-  content = "UniFlow";
-
-  for(int i=0; i<content.length(); i++){
-    display.write(content.charAt(i));
-  }
+  display.println(F("UniFlow"));
   
   display.display();
 
@@ -628,27 +700,44 @@ void setup() {
    * Program initialization
    ##################################*/
 
-  Serial.println("Entering process parameter configuration");
-
   EEPROM.begin(sizeof(persistence));
   EEPROM.get(0,persistence);
   
-  if(!(persistence.tempPID[0]>0 && persistence.tempPID[0]<1000)){
+  if(FORCERESET_EEPROM || !(persistence.tempPID[0]>0 && persistence.tempPID[0]<1000)){
     memcpy(&persistence, &persistenceDefault, sizeof(persistenceDefault));
     EEPROM.put(0,persistence);
     EEPROM.commit();
   }
+
+  Serial.println("EEPROM data retrieved");
   
   //initialize the variables we're linked to
   changeReflowToCycle(0);
+
+  Serial.println("Entering process parameter configuration");
+
+  configurationMenu();
+  display.display();
 
    // In setup/standby mode
   while(reflow_cycle == 0){
     
     intCapReg = mcp.getIntCap(A); // Make sure MCP interrupts are cleared
+
+    noInterrupts();
+    bool refresh = displayRefresh;
+    interrupts();
+    if(refresh){
+      configurationMenu();
+      configurationMenu();
+
+      display.display();
+      noInterrupts();
+      displayRefresh = false;
+      interrupts();
+    }
     
-    configurationMenu();
-    
+    delay(100);
   }
 
   display.clearDisplay();
