@@ -123,6 +123,8 @@ const struct {
   
 } persistenceDefault;
 
+int activeReflowProfile = -1;
+
 long time_start = 0;
 unsigned long windowStartTime;
 long last_cycle_change = 0;
@@ -225,7 +227,7 @@ void configurationMenu(){
     
     display.setTextSize(1);
     
-    if(readEncoder()%3 == 0){
+    if(readEncoder()%4 == 0){
       display.fillRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -237,7 +239,7 @@ void configurationMenu(){
     display.setCursor(10,12);
     display.println(F("General settings"));
         
-    if(readEncoder()%3 == 1){
+    if(readEncoder()%4 == 1){
       display.fillRoundRect(0, 23, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -249,7 +251,7 @@ void configurationMenu(){
     display.setCursor(10,25);
     display.println(F("Setpoints"));
         
-    if(readEncoder()%3 == 2){
+    if(readEncoder()%4 == 2){
       display.fillRoundRect(0, 36, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -260,11 +262,24 @@ void configurationMenu(){
 
     display.setCursor(10,38);
     display.println(F("PID parameters"));
+
+    if(readEncoder()%4 == 3){
+      display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(25,51);
+    display.println(F("Start Reflow"));
       
     if(encClicked){
       delay(150);
       encClicked = false;
-      menu_setting = readAndResetEncoder()%3 + 1;
+      if(readEncoder()%4 < 3) menu_setting = readAndResetEncoder()%4 + 1;
+      else changeReflowToCycle(1);
     }
   }
 
@@ -293,7 +308,7 @@ void configurationMenu(){
     display.setCursor(0,0);
     display.println(F("Setpoints"));
 
-    if(readEncoder()%4 == 0){
+    if(readEncoder()%5 == 0){
       display.fillRoundRect(0, 10, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -305,7 +320,7 @@ void configurationMenu(){
     display.setCursor(6,15);
     display.println(F("Profile 1"));
 
-    if(readEncoder()%4 == 1){
+    if(readEncoder()%5 == 1){
       display.fillRoundRect(64, 10, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -317,7 +332,7 @@ void configurationMenu(){
     display.setCursor(70,15);
     display.println(F("Profile 2"));
 
-    if(readEncoder()%4 == 2){
+    if(readEncoder()%5 == 2){
       display.fillRoundRect(0, 29, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -329,7 +344,7 @@ void configurationMenu(){
     display.setCursor(6,34);
     display.println(F("Profile 3"));
 
-    if(readEncoder()%4 == 3){
+    if(readEncoder()%5 == 3){
       display.fillRoundRect(64, 29, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -341,10 +356,26 @@ void configurationMenu(){
     display.setCursor(70,34);
     display.println(F("Profile 4"));
 
+    if(readEncoder()%5 == 4){
+      display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(25,51);
+    display.println(F("Back to main"));
+
     if(encClicked){
       delay(150);
       encClicked = false;
-      menu_setting = readAndResetEncoder()%4 + 20;
+      if(readEncoder()%5<4) menu_setting = readAndResetEncoder()%4 + 20;
+      else {
+        setEncoder(1);
+        menu_setting = 0;
+      }
     }
   }
   if(menu_setting >= 20 && menu_setting <= 29){
@@ -592,6 +623,47 @@ void changeReflowToCycle(int cycle){
   last_cycle_change = millis();
   reflow_cycle = cycle;
 }
+
+int getActiveReflowProfile() {
+  Serial.println("Determining reflow profile: ");  
+  int profile = -1;
+  uint8_t dip_1, dip_2, dip_3, dip_4;
+
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+
+  display.println(F("Profile selection"));
+
+  display.setTextSize(1);
+  display.setCursor(0, 15);
+  display.println(F("Select profile by sliding exactly one of the four switches into its left position towards the numbers 1-4. Confirm selection by pressing the encoder!"));
+
+  display.display();
+  
+  while(!encClicked || profile < 0){
+    if(encClicked) encClicked = false;
+    
+    dip_1 = mcp.getPin(DIP_1, A);
+    dip_2 = mcp.getPin(DIP_2, A);
+    dip_3 = mcp.getPin(DIP_3, A);
+    dip_4 = mcp.getPin(DIP_4, A);
+
+    if((dip_1+dip_2+dip_3+dip_4) == 1){
+      if(dip_1 == 1) profile = 1;
+      else if(dip_2 == 1) profile = 2;
+      else if(dip_3 == 1) profile = 3;
+      else if(dip_4 == 1) profile = 4;
+    }
+  
+    delay(250);
+  }
+  
+  Serial.print("Selected profile: ");
+  Serial.println(profile);
+  
+  return profile;
+}
   
 void setup() {
   Serial.begin(115200);
@@ -742,6 +814,8 @@ void setup() {
 
   display.clearDisplay();
   display.display();
+
+  activeReflowProfile = getActiveReflowProfile();
   
   windowStartTime = millis();
   time_start = millis();
