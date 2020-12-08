@@ -62,6 +62,7 @@ extern "C" {
   5: Reflow
   6: Reflow -> Ambient (Off)
   ********/
+bool configurationCompleted = false;
 volatile int reflow_cycle = 0;
 
 double disabled_temp = 0;
@@ -279,7 +280,7 @@ void configurationMenu(){
       delay(150);
       encClicked = false;
       if(readEncoder()%4 < 3) menu_setting = readAndResetEncoder()%4 + 1;
-      else changeReflowToCycle(1);
+      else configurationCompleted = true;
     }
   }
 
@@ -589,34 +590,34 @@ void changeReflowToCycle(int cycle){
   5: Reflow
   6: Reflow -> Ambient (Off)
   ********/
-  switch (cycle) {
+  switch (cycle) {    
     case 1:
-      temp_setpoint = standby_temp;
-      slope_setpoint = preheat_slope;
+      temp_setpoint = persistence.setpoints[activeReflowProfile-1][1];
+      slope_setpoint = persistence.setpoints[activeReflowProfile-1][5];
       break;
     case 2:
-      temp_setpoint = preheat_temp;
-      slope_setpoint = preheat_slope;
+      temp_setpoint = persistence.setpoints[activeReflowProfile-1][2];
+      slope_setpoint = persistence.setpoints[activeReflowProfile-1][5];
       break;
     case 3:
-      temp_setpoint = preheat_temp;
-      slope_setpoint = steady_slope;
+      temp_setpoint = persistence.setpoints[activeReflowProfile-1][2];
+      slope_setpoint = persistence.setpoints[activeReflowProfile-1][4];
       break;
     case 4:
-      temp_setpoint = reflow_temp;
-      slope_setpoint = critical_slope;
+      temp_setpoint = persistence.setpoints[activeReflowProfile-1][3];
+      slope_setpoint = persistence.setpoints[activeReflowProfile-1][6];
       break;
     case 5:
-      temp_setpoint = reflow_temp;
-      slope_setpoint = steady_slope;
+      temp_setpoint = persistence.setpoints[activeReflowProfile-1][3];
+      slope_setpoint = persistence.setpoints[activeReflowProfile-1][4];
       break;
     case 6:
-      temp_setpoint = standby_temp;
-      slope_setpoint = cooldown_slope;
+      temp_setpoint = persistence.setpoints[activeReflowProfile-1][1];
+      slope_setpoint = persistence.setpoints[activeReflowProfile-1][7];
       break;
     default:
-      temp_setpoint = disabled_temp;
-      slope_setpoint = steady_slope;
+      temp_setpoint = persistence.setpoints[activeReflowProfile-1][0];
+      slope_setpoint = persistence.setpoints[activeReflowProfile-1][4];
       break;
   }
 
@@ -629,6 +630,7 @@ int getActiveReflowProfile() {
   int profile = -1;
   uint8_t dip_1, dip_2, dip_3, dip_4;
 
+  display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0,0);
@@ -657,6 +659,7 @@ int getActiveReflowProfile() {
     }
   
     delay(250);
+    yield();
   }
   
   Serial.print("Selected profile: ");
@@ -808,6 +811,11 @@ void setup() {
       displayRefresh = false;
       interrupts();
     }
+
+    if(configurationCompleted){
+      activeReflowProfile = getActiveReflowProfile();
+      changeReflowToCycle(1);
+    }
     
     delay(100);
   }
@@ -815,8 +823,6 @@ void setup() {
   display.clearDisplay();
   display.display();
 
-  activeReflowProfile = getActiveReflowProfile();
-  
   windowStartTime = millis();
   time_start = millis();
 
