@@ -1,10 +1,6 @@
 #include "max6675.h"
 #include <PID_v1.h>
 
-extern "C" {
-#include "user_interface.h"
-}
-
 #include <SPI.h>
 #include <Wire.h>
 #include <EEPROM.h>
@@ -12,45 +8,42 @@ extern "C" {
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#include <Adafruit_NeoPixel.h>
+#include <NeoPixelBus.h>
 
-#include <MCP23017.h>
+#include <ESP32Encoder.h>
 
 // General defines
 
 #define RELAY_WINDOW          2500
 #define GFX_REFRESH_TIME      1000
 #define TEMP_OFFSET           10
-#define MCP_ADDRESS 0x20
 
-#define FORCERESET_EEPROM             false
+#define FORCERESET_EEPROM     false
 
-// ESP12 GPIOs
+// ESP32 GPIOs
 
-#define THERMO_DO             12
-#define THERMO_CS             2
-#define THERMO_CLK            14
+#define THERMO_DO             19
+#define THERMO_CS             5
+#define THERMO_CLK            18
 
-#define INDICATORS            15
+#define INDICATORS            4
 
-#define MCP_INT               13
+#define ENCODER_CLK           33
+#define ENCODER_DT            34
+#define ENCODER_SW            35
 
-// MCP23017 GPIOs
+#define DIP_4                 32
+#define DIP_3                 27
+#define DIP_2                 26
+#define DIP_1                 25
 
-#define ENCODER_CLK           0   // GPA0
-#define ENCODER_DT            1   // GPA1
-#define ENCODER_SW            2   // GPA2
+#define RELAY_PIN             13
+#define GPIO_14               14
+#define GPIO_15               15
+#define GPIO_16               16
+#define GPIO_17               17
 
-#define DIP_4                 3   // GPA3
-#define DIP_3                 4   // GPA4
-#define DIP_2                 5   // GPA5
-#define DIP_1                 6   // GPA6
-
-#define RELAY_PIN             0   // GPB0
-#define GPIO_B1               1   // GPB1
-#define GPIO_B2               2  // GPB2
-#define GPIO_B3               3  // GPB3
-#define GPIO_B4               4  // GPB4
+#define BUZZER                12
 
 
   /*******
@@ -80,19 +73,12 @@ double output_pid_slope;
 
 double temp_setpoint;
 float previous_temps[] = {0,0,0,0,0};
-volatile boolean temp_updated = false;
-volatile float input_isr;
 double input_temp;
 double output_pid_temp;
 
 float output_pid_series;
 
-MCP23017 mcp(MCP_ADDRESS);
-
-byte intCapReg;
-volatile uint8_t encLastInternal = 0;
-volatile int16_t encoderPositionISR = 0;
-int16_t encoderPosition = 0;
+ESP32Encoder encoder;
 
 volatile boolean encClicked = false;
 
@@ -126,7 +112,7 @@ const struct {
 
 int activeReflowProfile = -1;
 
-long time_start = 0;
+long startTime = 0;
 unsigned long windowStartTime;
 long last_cycle_change = 0;
 
@@ -137,15 +123,19 @@ long last_cycle_change = 0;
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-Adafruit_NeoPixel indicators = Adafruit_NeoPixel(2, INDICATORS, NEO_GRBW + NEO_KHZ800);
+NeoPixelBus<NeoGrbwFeature, Neo800KbpsMethod> indicators(2, INDICATORS);
+RgbwColor orange(130, 60, 0, 0);
+RgbwColor white(0, 0, 0, 150);
+RgbwColor black(0, 0, 0, 0);
 
 long last_draw = 0;
 int next_pixel_idx = 0;
 
 volatile int menu_setting = 0;
-volatile boolean displayRefresh = true;
 
-os_timer_t Timer1;
+hw_timer_t* timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+volatile boolean fetchRequired = false;
 
 
 /*void updateGraph(float temperature){
@@ -156,6 +146,23 @@ os_timer_t Timer1;
 
   display.display();
 }*/
+
+void enc_SW(){
+  encClicked = true;
+}
+
+int readEncoder(){
+  return (int)encoder.getCount();
+}
+int readAndResetEncoder(){
+  int encoderPos = (int)encoder.getCount();
+  encoder.clearCount();
+    
+  return encoderPos;
+}
+void setEncoder(int pos){
+  encoder.setCount(pos);
+}
 
 void drawInterface(){
   display.clearDisplay();
@@ -184,34 +191,25 @@ void parameterConfiguration(String pName, float* parameter, float increments){
   
   while(!encClicked){
     
-    noInterrupts();
-    bool refresh = displayRefresh;
-    interrupts();
-    if(refresh){
-      display.clearDisplay();
-      display.setTextColor(SSD1306_WHITE);
-  
-      display.setTextSize(1);
-      display.setCursor(0,0);
-      display.println(pName);
-  
-      display.setTextSize(3);
-      display.setCursor(20,15);
-      display.println((*parameter)+increments*readEncoder());
-      
-      display.display();
-      noInterrupts();
-      displayRefresh = false;
-      interrupts();
-    }
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
 
+    display.setTextSize(1);
+    display.setCursor(0,0);
+    display.println(pName);
+
+    display.setTextSize(3);
+    display.setCursor(20,15);
+    display.println((*parameter)+increments*readEncoder());
+    
+    display.display();
+ 
     yield(); // Prevent watchdog timeout
   }
 
   *parameter += increments*readAndResetEncoder();
   setEncoder(encoderPos);
   encClicked = false;
-  displayRefresh = true;
 }
 
 void configurationMenu(){
@@ -484,76 +482,16 @@ void configurationMenu(){
     if(encClicked){
       delay(150);
       encClicked = false;
+      setEncoder(2);
       menu_setting = 0;
     }
   }
 }
 
-void fetchData(void *pArg){
-  input_isr = thermocouple.readCelsius();
-  temp_updated = true;
-  //Serial.println(input_isr, 2);
-}
-
-void mcpInterruptISR(){
-  noInterrupts();
-  handleMCPInterrupt(); // Interrupt-event needs to be decoded immediately to catch fast rotation of rotary encoder
-  interrupts();
-}
-
-void handleMCPInterrupt(){
-  
-  byte intFlagReg, eventPin; 
-  intFlagReg = mcp.getIntFlag(A);
-  eventPin = log(intFlagReg)/log(2);
-  intCapReg = mcp.getIntCap(A);
-
-  if(((~intCapReg)>>2) & 1 == 1) enc_SW();
-  
-  else {
-    uint8_t encInternal = intCapReg & 3;
-    if(encLastInternal == 0 && encInternal == 3){
-      ++encoderPositionISR;
-      displayRefresh = true;
-    }
-    else if(encLastInternal == 2 && encInternal == 1){
-      --encoderPositionISR;
-      displayRefresh = true;
-    }
-
-    encLastInternal = encInternal;
-  }
-  
-}
-
-
-void enc_SW(){
-  encClicked = true;
-  displayRefresh = true;
-}
-
-int readEncoder(){
-  noInterrupts();
-  encoderPosition += encoderPositionISR;
-  encoderPositionISR = 0;
-  interrupts();
-
-  return encoderPosition;
-}
-int readAndResetEncoder(){
-  int encoder;
-  noInterrupts();
-  encoder = encoderPosition+encoderPositionISR;
-  encoderPositionISR = 0;
-  encoderPosition = 0;
-  interrupts();
-  
-  return encoder;
-}
-void setEncoder(int pos){
-  noInterrupts();
-  encoderPosition = pos;
-  interrupts();
+void IRAM_ATTR fetchData(){
+  portENTER_CRITICAL_ISR(&timerMux);
+  fetchRequired = true;
+  portEXIT_CRITICAL_ISR(&timerMux);
 }
 
 double calculateLinRegSlope(void){
@@ -646,10 +584,10 @@ int getActiveReflowProfile() {
   while(!encClicked || profile < 0){
     if(encClicked) encClicked = false;
     
-    dip_1 = mcp.getPin(DIP_1, A);
-    dip_2 = mcp.getPin(DIP_2, A);
-    dip_3 = mcp.getPin(DIP_3, A);
-    dip_4 = mcp.getPin(DIP_4, A);
+    dip_1 = !digitalRead(DIP_1);
+    dip_2 = !digitalRead(DIP_2);
+    dip_3 = !digitalRead(DIP_3);
+    dip_4 = !digitalRead(DIP_4);
 
     if((dip_1+dip_2+dip_3+dip_4) == 1){
       if(dip_1 == 1) profile = 1;
@@ -675,42 +613,27 @@ void setup() {
   delay(500);
 
   Serial.println("Welcome to UniFlow");
+  Serial.flush();
 
-  /*#################################
-   * MCP23017 I2C Port Expander Setup
-   ##################################*/
-
-  Serial.print("MCP23017 Initialization... ");
-  mcp.Init();
-
-  pinMode(MCP_INT, INPUT);
-
-  mcp.setPinMode(ENCODER_CLK, A, 0);
-  mcp.setPinMode(ENCODER_DT, A, 0);
-  mcp.setPinMode(ENCODER_SW, A, 0);
-
-  mcp.setPinMode(DIP_1, A, 0);
-  mcp.setPinMode(DIP_2, A, 0);
-  mcp.setPinMode(DIP_3, A, 0);
-  mcp.setPinMode(DIP_4, A, 0);
+  pinMode(DIP_1, INPUT);
+  pinMode(DIP_2, INPUT);
+  pinMode(DIP_3, INPUT);
+  pinMode(DIP_4, INPUT);
   
-  mcp.setPinMode(RELAY_PIN, B, 1);
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
   
-  /*mcp.pinMode(GPIO_B1, B, 1);
-  mcp.pinMode(GPIO_B2, B, 1);
-  mcp.pinMode(GPIO_B3, B, 1);
-  mcp.pinMode(GPIO_B4, B, 1);*/
+  /*pinMode(GPIO_14, INPUT/OUTPUT);
+  pinMode(GPIO_15, INPUT/OUTPUT);
+  pinMode(GPIO_16, INPUT/OUTPUT);
+  pinMode(GPIO_17, INPUT/OUTPUT);*/
 
-  attachInterrupt(digitalPinToInterrupt(MCP_INT), mcpInterruptISR, FALLING);
+  pinMode(ENCODER_SW, INPUT);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_SW), enc_SW, FALLING);
 
-  mcp.setInterruptPinPol(LOW); // set INTA and INTB active-low
-  delay(10);
-  mcp.setInterruptOnChangePort(B00000101, A); // set Port A pins 0 and 2 as interrupt pins
-  
-
-  intCapReg = mcp.getIntCap(A); // ensures that existing interrupts are cleared
-
-  setEncoder(0);
+  ESP32Encoder::useInternalWeakPullResistors=UP;
+  encoder.attachSingleEdge(ENCODER_DT, ENCODER_CLK);
+  encoder.clearCount();
 
   Serial.println("completed!");
   
@@ -748,26 +671,26 @@ void setup() {
    * SK6812 LED Setup
    ##################################*/
 
-  indicators.begin();
-  indicators.setPixelColor(0, indicators.Color(0,0,0,150));
-  indicators.setPixelColor(1, indicators.Color(0,0,0,0));
-  indicators.show();
+  indicators.Begin();
+  indicators.SetPixelColor(0, white);
+  indicators.SetPixelColor(1, black);
+  indicators.Show();
   delay(250);
-  indicators.setPixelColor(0, indicators.Color(0,0,0,0));
-  indicators.setPixelColor(1, indicators.Color(0,0,0,150));
-  indicators.show();
+  indicators.SetPixelColor(0, black);
+  indicators.SetPixelColor(1, white);
+  indicators.Show();
   delay(250);
-  indicators.setPixelColor(0, indicators.Color(0,0,0,150));
-  indicators.setPixelColor(1, indicators.Color(0,0,0,0));
-  indicators.show();
+  indicators.SetPixelColor(0, white);
+  indicators.SetPixelColor(1, black);
+  indicators.Show();
   delay(250);
-  indicators.setPixelColor(0, indicators.Color(0,0,0,0));
-  indicators.setPixelColor(1, indicators.Color(0,0,0,150));
-  indicators.show();
+  indicators.SetPixelColor(0, black);
+  indicators.SetPixelColor(1, white);
+  indicators.Show();
   delay(250);
-  indicators.setPixelColor(0, indicators.Color(130,60,0,0));
-  indicators.setPixelColor(1, indicators.Color(130,60,0,0));
-  indicators.show();
+  indicators.SetPixelColor(0, orange);
+  indicators.SetPixelColor(1, orange);
+  indicators.Show();
   delay(1500);
 
   
@@ -797,20 +720,11 @@ void setup() {
    // In setup/standby mode
   while(reflow_cycle == 0){
     
-    intCapReg = mcp.getIntCap(A); // Make sure MCP interrupts are cleared
+    configurationMenu();
+    configurationMenu();
 
-    noInterrupts();
-    bool refresh = displayRefresh;
-    interrupts();
-    if(refresh){
-      configurationMenu();
-      configurationMenu();
-
-      display.display();
-      noInterrupts();
-      displayRefresh = false;
-      interrupts();
-    }
+    display.display();
+    
 
     if(configurationCompleted){
       activeReflowProfile = getActiveReflowProfile();
@@ -824,7 +738,7 @@ void setup() {
   display.display();
 
   windowStartTime = millis();
-  time_start = millis();
+  startTime = millis();
 
   
 
@@ -837,11 +751,15 @@ void setup() {
 
   PID_slope.SetOutputLimits(0,100);
   PID_slope.SetSampleTime(RELAY_WINDOW);
-  
-  // Fetch sensor data every 500ms
-  os_timer_setfn(&Timer1, fetchData, NULL);
-  os_timer_arm(&Timer1, 500, true);
-  
+
+  /*#################################
+   * Hardware timer setup
+   ##################################*/
+  timer = timerBegin(0,80,true); // Use timer 0, prescaler 80 => increment each microsecond, count up
+  timerAttachInterrupt(timer, &fetchData, true); // Attach ISR, edge interrupt
+  timerAlarmWrite(timer, 500000, true); // 500ms timer period, auto reload
+  timerAlarmEnable(timer); // enable timer
+    
   //turn the PID on
   PID_temp.SetMode(AUTOMATIC);
   PID_slope.SetMode(AUTOMATIC);
@@ -851,10 +769,24 @@ void setup() {
 }
 
 void loop() {  
+  // Shift last 5 temps to left and add current temp
+  if(fetchRequired){
+
+    input_temp = thermocouple.readCelsius() + TEMP_OFFSET;
+    portENTER_CRITICAL(&timerMux);
+    fetchRequired = false;
+    portEXIT_CRITICAL(&timerMux);
+    
+    for(int i=0; i<4; i++){
+      previous_temps[i] = previous_temps[i+1];
+    }
+    previous_temps[4] = input_temp;
+
   
-  noInterrupts();
-  input_temp = input_isr + TEMP_OFFSET;
-  interrupts();
+    // Calculate average slope of last 5 temps
+    input_slope = calculateLinRegSlope();
+  }
+  
 
   if(millis() - last_draw > GFX_REFRESH_TIME){
     drawInterface();
@@ -869,18 +801,7 @@ void loop() {
   else if(reflow_cycle == 3 && (millis() - last_cycle_change > 20000)) changeReflowToCycle(4);
   //else if(reflow_cycle == 5 && (millis() - last_cycle_change > 30000)) changeReflowToCycle(6);
     
-  // Shift last 5 temps to left and add current temp
-  if(temp_updated){
-    for(int i=0; i<4; i++){
-      previous_temps[i] = previous_temps[i+1];
-    }
-    previous_temps[4] = input_temp;
-
-    temp_updated = false;
   
-    // Calculate average slope of last 5 temps
-    input_slope = calculateLinRegSlope();
-  }
     
   //Serial.println(input, 2);
 
@@ -912,10 +833,10 @@ void loop() {
   }
   
   if (relay_dc > millis() - windowStartTime){
-    mcp.setPin(RELAY_PIN,B,HIGH);
+    digitalWrite(RELAY_PIN,HIGH);
   }
   else{
-    mcp.setPin(RELAY_PIN,B,LOW);
+    digitalWrite(RELAY_PIN,LOW);
   }
   
   

@@ -4,7 +4,7 @@
 
 This software is designed to run the process of at-home SMD circuit board (PCB) reflow soldering in an easy, customizable, precise and reproducible manner. This requires accurate realtime data and algorithms to follow a preset temperature profile as closely as possible.
 
-An ESP8266 microcontroller is the brain of the operation. Process parameters can easily be adjusted by using the nice, rotary encoder based user interface. The current settings as well as all required live process data is being displayed on a high-contrast OLED display.
+An ESP32 Dual Core 240MHz microcontroller is the brain of the operation. Process parameters can easily be adjusted by using the nice, rotary encoder based user interface. The current settings as well as all required live process data is being displayed on a high-contrast OLED display.
 
 During the reflow cycle, the current temperature of the reflow device is regularly being acquired via a thermocouple sensor, capable of precisely reading temperatures of up to 1.000&deg;C. According to the currently set process parameters, a software PID-controller decides on how to reach the setpoint temperature in the most accurate way.
 
@@ -13,7 +13,7 @@ By PWM switching a solid state relay (SSR), connected to the heating element of 
 
 ## Features
 
-* ESP8266 microcontroller platform
+* ESP32 microcontroller platform
 * MAX6675 thermocouple readout
 * Dual PID-controller for temperature and slope setpoints
 * High-contrast OLED display
@@ -26,7 +26,7 @@ The software has been optimized to run on a custom made hardware platform called
 
 UniFlow is a completely ready-to-go solution for everything and anything requiring temperature control (reflow soldering, sous vide cooking, pizza oven,...). It comes with the following features:
 
-- [x] ESP8266 microcontroller
+- [x] ESP32 microcontroller
 - [x] 0.96" OLED display
 - [x] Rotary encoder
 - [x] MAX6675 thermocouple converter
@@ -48,10 +48,10 @@ To compile this software using the Arduino IDE the following non-standard librar
 
 * Adafruit SSD1306 ([Adafruit on GitHub](https://github.com/adafruit/Adafruit_SSD1306))
 * Adafruit GFK ([Adafruit on GitHub](https://github.com/adafruit/Adafruit-GFX-Library))
-* Adafruit Neopixel ([Adafruit on GitHub](https://github.com/adafruit/Adafruit_NeoPixel))
+* NeoPixelBus ([Makuna on GitHub](https://github.com/Makuna/NeoPixelBus))
 * Adafruit MAX6675 with a modification explained [here](https://github.com/adafruit/MAX6675-library/issues/9) ([Adafruit on Github](https://github.com/adafruit/MAX6675-library))
-* MCP23017_WE ([wollewald on GitHub](https://github.com/wollewald/MCP23017_WE))
 * Arduino PID library ([br3ttb on GitHub](https://github.com/br3ttb/Arduino-PID-Library))
+* ESP32Encoder ([Kevin Harrington on Arduino.cc](https://www.arduino.cc/reference/en/libraries/esp32encoder/))
 
 In order to have full functionality of the USB-C port, the following SiLabs CP2102 driver will be required:
 * SiLabs CP210x USB to UART VCP driver download ([SiLabs downloads page](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers))
