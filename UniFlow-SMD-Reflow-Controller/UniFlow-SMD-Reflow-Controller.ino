@@ -575,26 +575,68 @@ int getActiveReflowProfile() {
 
   display.println(F("Profile selection"));
 
-  display.setTextSize(1);
-  display.setCursor(0, 15);
-  display.println(F("Select profile by sliding exactly one of the four switches into its left position towards the numbers 1-4. Confirm selection by pressing the encoder!"));
+  display.drawRect(10, 10, 108, 41, SSD1306_WHITE);
+  
+  display.drawRect(20, 12, 21, 30, SSD1306_WHITE);
+  display.drawRect(41, 12, 21, 30, SSD1306_WHITE);
+  display.drawRect(62, 12, 21, 30, SSD1306_WHITE);
+  display.drawRect(83, 12, 21, 30, SSD1306_WHITE);
 
+  display.setCursor(29, 43);
+  display.println("1");
+  display.setCursor(50, 43);
+  display.println("2");
+  display.setCursor(71, 43);
+  display.println("3");
+  display.setCursor(92, 43);
+  display.println("4");  
+  
   display.display();
   
   while(!encClicked || profile < 0){
     if(encClicked) encClicked = false;
+
+    display.fillRect(23, 13, 15, 26, SSD1306_BLACK);
+    display.fillRect(44, 13, 15, 26, SSD1306_BLACK);
+    display.fillRect(65, 13, 15, 26, SSD1306_BLACK);
+    display.fillRect(86, 13, 15, 26, SSD1306_BLACK);
     
     dip_1 = !digitalRead(DIP_1);
+    if(dip_1) display.fillRect(23, 14, 15, 13, SSD1306_WHITE);
+    else      display.fillRect(23, 26, 15, 13, SSD1306_WHITE);
+    
     dip_2 = !digitalRead(DIP_2);
+    if(dip_2) display.fillRect(44, 14, 15, 13, SSD1306_WHITE);
+    else      display.fillRect(44, 26, 15, 13, SSD1306_WHITE);
+    
     dip_3 = !digitalRead(DIP_3);
+    if(dip_3) display.fillRect(65, 14, 15, 13, SSD1306_WHITE);
+    else      display.fillRect(65, 26, 15, 13, SSD1306_WHITE);
+    
     dip_4 = !digitalRead(DIP_4);
+    if(dip_4) display.fillRect(86, 14, 15, 13, SSD1306_WHITE);
+    else      display.fillRect(86, 26, 15, 13, SSD1306_WHITE);
 
+
+    display.fillRect(0, 52, 128, 12, SSD1306_BLACK);
+    display.setCursor(11,52);
+    
     if((dip_1+dip_2+dip_3+dip_4) == 1){
       if(dip_1 == 1) profile = 1;
       else if(dip_2 == 1) profile = 2;
       else if(dip_3 == 1) profile = 3;
       else if(dip_4 == 1) profile = 4;
+
+      display.println(F("Confirm with Click"));
     }
+    else if((dip_1+dip_2+dip_3+dip_4) > 1){
+      display.println(F("Only one switch up"));
+    }
+    else {
+      display.println(F("Flip one switch up"));
+    }
+
+    display.display();
   
     delay(250);
     yield();
