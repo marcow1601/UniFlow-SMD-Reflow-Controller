@@ -47,7 +47,7 @@ The final version of UniFlow will soon be available for purchase here: ~~UniFlow
 To compile this software using the Arduino IDE the following non-standard libraries will be required:
 
 * Adafruit SSD1306 ([Adafruit on GitHub](https://github.com/adafruit/Adafruit_SSD1306))
-* Adafruit GFK ([Adafruit on GitHub](https://github.com/adafruit/Adafruit-GFX-Library))
+* Adafruit GFX ([Adafruit on GitHub](https://github.com/adafruit/Adafruit-GFX-Library))
 * NeoPixelBus ([Makuna on GitHub](https://github.com/Makuna/NeoPixelBus))
 * Adafruit MAX6675 with a modification explained [here](https://github.com/adafruit/MAX6675-library/issues/9) ([Adafruit on Github](https://github.com/adafruit/MAX6675-library))
 * Arduino PID library ([br3ttb on GitHub](https://github.com/br3ttb/Arduino-PID-Library))
