@@ -479,11 +479,115 @@ void configurationMenu(){
     display.setCursor(0,0);
     display.println(F("PID parameters"));
 
+    display.setCursor(0,10);
+    display.println(F("Temperature"));
+    display.setCursor(64,10);
+    display.println(F("Slope"));
+
+     if(readEncoder()%7 == 0){
+      display.fillRoundRect(0, 20, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK); 
+    }
+    else {
+      display.drawRoundRect(0, 20, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,22);
+    display.println(F("P: "));
+        
+    if(readEncoder()%7 == 1){
+      display.fillRoundRect(0, 33, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(0, 33, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,35);
+    display.println(F("I: "));
+        
+    if(readEncoder()%7 == 2){
+      display.fillRoundRect(0, 46, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(0, 46, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,48);
+    display.println(F("D: "));
+
+    if(readEncoder()%7 == 3){
+      display.fillRoundRect(64, 20, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(64, 20, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(74,22);
+    display.println(F("P: "));
+
+    if(readEncoder()%7 == 4){
+      display.fillRoundRect(64, 33, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(64, 33, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(74,35);
+    display.println(F("I: "));
+
+    if(readEncoder()%7 == 5){
+      display.fillRoundRect(64, 46, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(64, 46, 64, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(74,48);
+    display.println(F("D: "));
+
+    if(readEncoder()%7 == 6){
+      display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(25,51);
+    display.println(F("<- Save"));
+
+    
     if(encClicked){
       delay(150);
       encClicked = false;
-      setEncoder(2);
-      menu_setting = 0;
+
+      if(readEncoder()%7 == 0) parameterConfiguration(String("Temp Controller - P"), &persistence.tempPID[0], 0.1);
+      else if(readEncoder()%7 == 1) parameterConfiguration(String("Temp Controller - I"), &persistence.tempPID[1], 0.1);
+      else if(readEncoder()%7 == 2) parameterConfiguration(String("Temp Controller - D"), &persistence.tempPID[2], 1.0);
+      else if(readEncoder()%7 == 3) parameterConfiguration(String("Slope Controller - P"), &persistence.slopePID[0], 1.0);
+      else if(readEncoder()%7 == 4) parameterConfiguration(String("Slope Controller - I"), &persistence.slopePID[1], 0.1);
+      else if(readEncoder()%7 == 5) parameterConfiguration(String("Slope Controller - D"), &persistence.slopePID[2], 1.0);
+      
+      else if(readEncoder()%7 == 6){
+        EEPROM.put(0,persistence);
+        EEPROM.commit();
+        
+        setEncoder(2);
+        menu_setting = 0;
+      }
+      
     }
   }
 }
