@@ -84,13 +84,6 @@ volatile boolean encClicked = false;
 
 MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
-//Specify the links and initial tuning parameters
-float Kp_temp=5.7, Ki_temp=0.15, Kd_temp=100;     // P 5.7   I 0.1   D  73
-PID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, Kp_temp, Ki_temp, Kd_temp, DIRECT);
-
-float Kp_slope=200, Ki_slope=0, Kd_slope=0;
-PID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, Kp_slope, Ki_slope, Kd_slope, DIRECT);
-
 /***
  * Setpoint and tuning parameter struct for persistent storage in EEPROM
  ***/
@@ -109,6 +102,10 @@ const struct {
   float setpoints[4][10] = {{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60}};
   
 } persistenceDefault;
+
+//Specify the PID links and initial tuning parameters
+PID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, persistenceDefault.tempPID[0], persistenceDefault.tempPID[1], persistenceDefault.tempPID[2], DIRECT);
+PID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, persistenceDefault.slopePID[0], persistenceDefault.slopePID[1], persistenceDefault.slopePID[2], DIRECT);
 
 int activeReflowProfile = -1;
 
@@ -886,10 +883,15 @@ void setup() {
   windowStartTime = millis();
   startTime = millis();
 
-  
-
   for(int i = 0; i<5; i++){ previous_temps[i] = thermocouple.readCelsius(); }
 
+    /*#################################
+   * Setup PID controllers
+   ##################################*/
+
+  PID_temp.SetTunings(persistence.tempPID[0], persistence.tempPID[1], persistence.tempPID[2]);
+  PID_slope.SetTunings(persistence.slopePID[0], persistence.slopePID[1], persistence.slopePID[2]);
+   
   //tell the PID to range between 0 and the full window size
   //PID_temp.SetOutputLimits(-output_zero_offset, RELAY_WINDOW-output_zero_offset);
   PID_temp.SetOutputLimits(0, 100);
