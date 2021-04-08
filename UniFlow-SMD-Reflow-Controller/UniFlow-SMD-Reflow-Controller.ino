@@ -17,6 +17,7 @@
 #define RELAY_WINDOW          2500
 #define GFX_REFRESH_TIME      1000
 #define TEMP_OFFSET           10
+#define ALARM_TIMEOUT         10*60*1000   // 10 minutes in milliseconds
 
 #define FORCERESET_EEPROM     false
 
@@ -122,6 +123,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 NeoPixelBus<NeoGrbwFeature, Neo800KbpsMethod> indicators(2, INDICATORS);
 RgbwColor orange(130, 60, 0, 0);
+RgbwColor red(200, 0 , 0 , 0);
 RgbwColor white(0, 0, 0, 150);
 RgbwColor black(0, 0, 0, 0);
 
@@ -135,14 +137,26 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 volatile boolean fetchRequired = false;
 
 
-/*void updateGraph(float temperature){
+void alarm(){
+
+  digitalWrite(RELAY_PIN, LOW);   // Turn off the heating element
   
-  display.drawPixel(next_pixel_idx, map(temperature,20,250,51,0), SSD1306_WHITE);
+  while(true){  // can only be exited by resetting the UniFlow Controller
+    digitalWrite(BUZZER, HIGH);
+    indicators.SetPixelColor(0, white);
+    indicators.SetPixelColor(1, red);
+    indicators.Show();
+    delay(250);
 
-  next_pixel_idx++;
-
-  display.display();
-}*/
+    digitalWrite(BUZZER, LOW);
+    indicators.SetPixelColor(0, red);
+    indicators.SetPixelColor(1, white);
+    indicators.Show();
+    delay(250);
+    
+    yield();  // make sure watchdog does not auto-reset the controller without user action
+  }
+}
 
 void enc_SW(){
   encClicked = true;
@@ -986,8 +1000,9 @@ void loop() {
   else{
     digitalWrite(RELAY_PIN,LOW);
   }
-  
-  
+
+  // Trigger alarm state if cycle takes longer than ALARM_TIMEOUT
+  if(millis() - startTime >= ALARM_TIMEOUT) alarm();
   
   
 }
