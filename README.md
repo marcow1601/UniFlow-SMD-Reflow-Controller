@@ -1,5 +1,7 @@
 # UniFlow SMD Reflow Controller
 
+<img src="doc/img/uniflow_v01-2021.jpg" width="700">
+
 ## Introduction
 
 This software is designed to run the process of at-home SMD circuit board (PCB) reflow soldering in an easy, customizable, precise and reproducible manner. This requires accurate realtime data and algorithms to follow a preset temperature profile as closely as possible.
