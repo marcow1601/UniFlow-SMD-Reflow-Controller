@@ -221,6 +221,8 @@ void parameterConfiguration(String pName, float* parameter, float increments){
   *parameter += increments*readAndResetEncoder();
   setEncoder(encoderPos);
   encClicked = false;
+
+  delay(200);
 }
 
 void configurationMenu(){
@@ -488,84 +490,106 @@ void configurationMenu(){
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0,0);
-    display.println(F("PID parameters"));
-
-    display.setCursor(0,10);
+    
     display.println(F("Temperature"));
-    display.setCursor(64,10);
+    display.setCursor(70,0);
     display.println(F("Slope"));
 
      if(readEncoder()%7 == 0){
-      display.fillRoundRect(0, 20, 64, 12, 3, SSD1306_WHITE);
+      display.fillRoundRect(0, 10, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
     else {
-      display.drawRoundRect(0, 20, 64, 12, 3, SSD1306_WHITE);
+      display.drawRoundRect(0, 10, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(10,22);
-    display.println(F("P: "));
+    display.setCursor(10,12);
+    display.println(F("P:"));
+    display.setCursor(25,12);
+    char p_temp[6];
+    dtostrf(persistence.tempPID[0], 4, 2, p_temp);
+    display.println(p_temp);
         
     if(readEncoder()%7 == 1){
-      display.fillRoundRect(0, 33, 64, 12, 3, SSD1306_WHITE);
+      display.fillRoundRect(0, 23, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(0, 33, 64, 12, 3, SSD1306_WHITE);
+      display.drawRoundRect(0, 23, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(10,35);
+    display.setCursor(10,25);
     display.println(F("I: "));
+    display.setCursor(25,25);
+    char i_temp[6];
+    dtostrf(persistence.tempPID[1], 4, 2, i_temp);
+    display.println(i_temp);
         
     if(readEncoder()%7 == 2){
-      display.fillRoundRect(0, 46, 64, 12, 3, SSD1306_WHITE);
+      display.fillRoundRect(0, 36, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(0, 46, 64, 12, 3, SSD1306_WHITE);
+      display.drawRoundRect(0, 36, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(10,48);
+    display.setCursor(10,38);
     display.println(F("D: "));
+    display.setCursor(25,38);
+    char d_temp[6];
+    dtostrf(persistence.tempPID[2], 4, 2, d_temp);
+    display.println(d_temp);
 
     if(readEncoder()%7 == 3){
-      display.fillRoundRect(64, 20, 64, 12, 3, SSD1306_WHITE);
+      display.fillRoundRect(64, 10, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(64, 20, 64, 12, 3, SSD1306_WHITE);
+      display.drawRoundRect(64, 10, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(74,22);
+    display.setCursor(74,12);
     display.println(F("P: "));
+    display.setCursor(89,12);
+    char p_slope[6];
+    dtostrf(persistence.slopePID[0], 4, 2, p_slope);
+    display.println(p_slope);
 
     if(readEncoder()%7 == 4){
-      display.fillRoundRect(64, 33, 64, 12, 3, SSD1306_WHITE);
+      display.fillRoundRect(64, 23, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(64, 33, 64, 12, 3, SSD1306_WHITE);
+      display.drawRoundRect(64, 23, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(74,35);
+    display.setCursor(74,25);
     display.println(F("I: "));
+    display.setCursor(89,25);
+    char i_slope[6];
+    dtostrf(persistence.slopePID[1], 4, 2, i_slope);
+    display.println(i_slope);
 
     if(readEncoder()%7 == 5){
-      display.fillRoundRect(64, 46, 64, 12, 3, SSD1306_WHITE);
+      display.fillRoundRect(64, 36, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(64, 46, 64, 12, 3, SSD1306_WHITE);
+      display.drawRoundRect(64, 36, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(74,48);
+    display.setCursor(74,38);
     display.println(F("D: "));
+    display.setCursor(89,38);
+    char d_slope[6];
+    dtostrf(persistence.slopePID[2], 4, 2, d_slope);
+    display.println(d_slope);
 
     if(readEncoder()%7 == 6){
       display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
@@ -585,10 +609,10 @@ void configurationMenu(){
       encClicked = false;
 
       if(readEncoder()%7 == 0) parameterConfiguration(String("Temp Controller - P"), &persistence.tempPID[0], 0.1);
-      else if(readEncoder()%7 == 1) parameterConfiguration(String("Temp Controller - I"), &persistence.tempPID[1], 0.1);
+      else if(readEncoder()%7 == 1) parameterConfiguration(String("Temp Controller - I"), &persistence.tempPID[1], 0.05);
       else if(readEncoder()%7 == 2) parameterConfiguration(String("Temp Controller - D"), &persistence.tempPID[2], 1.0);
       else if(readEncoder()%7 == 3) parameterConfiguration(String("Slope Controller - P"), &persistence.slopePID[0], 1.0);
-      else if(readEncoder()%7 == 4) parameterConfiguration(String("Slope Controller - I"), &persistence.slopePID[1], 0.1);
+      else if(readEncoder()%7 == 4) parameterConfiguration(String("Slope Controller - I"), &persistence.slopePID[1], 0.05);
       else if(readEncoder()%7 == 5) parameterConfiguration(String("Slope Controller - D"), &persistence.slopePID[2], 1.0);
       
       else if(readEncoder()%7 == 6){
