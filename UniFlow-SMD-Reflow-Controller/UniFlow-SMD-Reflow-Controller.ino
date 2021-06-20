@@ -1,5 +1,5 @@
 #include "max6675.h"
-#include <PID_v1.h>
+#include <QuickPID.h>
 
 #include <SPI.h>
 #include <Wire.h>
@@ -68,14 +68,14 @@ double preheat_slope = 1.5;
 double critical_slope = 1.5;
 double cooldown_slope = -3;
 
-double slope_setpoint;
-double input_slope = 0;
-double output_pid_slope;
+float slope_setpoint;
+float input_slope = 0;
+float output_pid_slope;
 
-double temp_setpoint;
+float temp_setpoint;
 float previous_temps[] = {0,0,0,0,0};
-double input_temp;
-double output_pid_temp;
+float input_temp;
+float output_pid_temp;
 
 float output_pid_series;
 
@@ -107,8 +107,8 @@ const struct {
 } persistenceDefault;
 
 //Specify the PID links and initial tuning parameters
-PID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, persistenceDefault.tempPID[0], persistenceDefault.tempPID[1], persistenceDefault.tempPID[2], DIRECT);
-PID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, persistenceDefault.slopePID[0], persistenceDefault.slopePID[1], persistenceDefault.slopePID[2], DIRECT);
+QuickPID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, persistenceDefault.tempPID[0], persistenceDefault.tempPID[1], persistenceDefault.tempPID[2], QuickPID::DIRECT);
+QuickPID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, persistenceDefault.slopePID[0], persistenceDefault.slopePID[1], persistenceDefault.slopePID[2], QuickPID::DIRECT);
 
 int activeReflowProfile = -1;
 
@@ -161,10 +161,10 @@ void alarm(){
 }
 
 void enc_SW(){
-  if((long)(micros() - lastClick) >= CLICK_BOUNCE*1000){
+  if((long)(millis() - lastClick) >= CLICK_BOUNCE){
     Serial.println("Click");
     encClicked = true;
-    lastClick = micros(); 
+    lastClick = millis(); 
   }
   else Serial.println("Bounce");
 }
@@ -921,7 +921,7 @@ void setup() {
   windowStartTime = millis();
   startTime = millis();
 
-  for(int i = 0; i<5; i++){ previous_temps[i] = thermocouple.readCelsius(); }
+  for(int i = 0; i<5; i++){ previous_temps[i] = thermocouple.readCelsius() + TEMP_OFFSET; }
 
     /*#################################
    * Setup PID controllers
@@ -933,10 +933,10 @@ void setup() {
   //tell the PID to range between 0 and the full window size
   //PID_temp.SetOutputLimits(-output_zero_offset, RELAY_WINDOW-output_zero_offset);
   PID_temp.SetOutputLimits(0, 100);
-  PID_temp.SetSampleTime(RELAY_WINDOW);
+  //PID_temp.SetSampleTime(RELAY_WINDOW);
 
   PID_slope.SetOutputLimits(0,100);
-  PID_slope.SetSampleTime(RELAY_WINDOW);
+  //PID_slope.SetSampleTime(RELAY_WINDOW);
 
   /*#################################
    * Hardware timer setup
@@ -947,8 +947,8 @@ void setup() {
   timerAlarmEnable(timer); // enable timer
     
   //turn the PID on
-  PID_temp.SetMode(AUTOMATIC);
-  PID_slope.SetMode(AUTOMATIC);
+  PID_temp.SetMode(QuickPID::AUTOMATIC);
+  PID_slope.SetMode(QuickPID::AUTOMATIC);
 
   
   

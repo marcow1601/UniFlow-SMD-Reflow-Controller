@@ -52,7 +52,7 @@ To compile this software using the Arduino IDE the following non-standard librar
 * Adafruit GFX ([Adafruit on GitHub](https://github.com/adafruit/Adafruit-GFX-Library))
 * NeoPixelBus ([Makuna on GitHub](https://github.com/Makuna/NeoPixelBus))
 * Adafruit MAX6675 with a modification explained [here](https://github.com/adafruit/MAX6675-library/issues/9) ([Adafruit on Github](https://github.com/adafruit/MAX6675-library))
-* Arduino PID library ([br3ttb on GitHub](https://github.com/br3ttb/Arduino-PID-Library))
+* QuickPID ([Dlloydev on GitHub](https://github.com/Dlloydev/QuickPID))
 * ESP32Encoder ([Kevin Harrington on Arduino.cc](https://www.arduino.cc/reference/en/libraries/esp32encoder/))
 
 In order to have full functionality of the USB-C port, the following SiLabs CP2102 driver will be required:
