@@ -82,6 +82,8 @@ float output_pid_series;
 ESP32Encoder encoder;
 
 volatile boolean encClicked = false;
+volatile unsigned long lastClick;
+#define CLICK_BOUNCE 250
 
 MAX6675 thermocouple(THERMO_CLK, THERMO_CS, THERMO_DO);
 
@@ -159,7 +161,12 @@ void alarm(){
 }
 
 void enc_SW(){
-  encClicked = true;
+  if((long)(micros() - lastClick) >= CLICK_BOUNCE*1000){
+    Serial.println("Click");
+    encClicked = true;
+    lastClick = micros(); 
+  }
+  else Serial.println("Bounce");
 }
 
 int readEncoder(){
@@ -221,8 +228,6 @@ void parameterConfiguration(String pName, float* parameter, float increments){
   *parameter += increments*readAndResetEncoder();
   setEncoder(encoderPos);
   encClicked = false;
-
-  delay(200);
 }
 
 void configurationMenu(){
@@ -288,7 +293,6 @@ void configurationMenu(){
     display.println(F("Start Reflow"));
       
     if(encClicked){
-      delay(150);
       encClicked = false;
       if(readEncoder()%4 < 3) menu_setting = readAndResetEncoder()%4 + 1;
       else configurationCompleted = true;
@@ -305,7 +309,6 @@ void configurationMenu(){
     display.println(F("General settings"));
 
     if(encClicked){
-      delay(150);
       encClicked = false;
       menu_setting = 0;
     }
@@ -381,7 +384,6 @@ void configurationMenu(){
     display.println(F("Back to main"));
 
     if(encClicked){
-      delay(150);
       encClicked = false;
       if(readEncoder()%5<4) menu_setting = readAndResetEncoder()%4 + 20;
       else {
@@ -461,7 +463,6 @@ void configurationMenu(){
     display.setRotation(0);
     
     if(encClicked){
-      delay(150);
       encClicked = false;
       
       if(readEncoder() % 9 == 0) parameterConfiguration(String("Standby temperature"), &persistence.setpoints[menu_setting%20][1], 1.0);
@@ -605,7 +606,6 @@ void configurationMenu(){
 
     
     if(encClicked){
-      delay(150);
       encClicked = false;
 
       if(readEncoder()%7 == 0) parameterConfiguration(String("Temp Controller - P"), &persistence.tempPID[0], 0.1);
@@ -776,7 +776,7 @@ int getActiveReflowProfile() {
     }
 
     display.display();
-  
+
     delay(250);
     yield();
   }
@@ -810,7 +810,7 @@ void setup() {
   pinMode(GPIO_17, INPUT/OUTPUT);*/
 
   pinMode(ENCODER_SW, INPUT);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_SW), enc_SW, FALLING);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_SW), enc_SW, RISING);
 
   ESP32Encoder::useInternalWeakPullResistors=UP;
   encoder.attachSingleEdge(ENCODER_DT, ENCODER_CLK);
