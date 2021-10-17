@@ -95,6 +95,8 @@ struct {
   float slopePID[3];
   
   float setpoints[4][10];
+
+  bool useSlopePID;
   
 } persistence;
 
@@ -103,12 +105,20 @@ const struct {
   float slopePID[3] = {200, 0, 0};
   
   float setpoints[4][10] = {{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60}};
+
+  bool useSlopePID = true;
   
 } persistenceDefault;
 
 //Specify the PID links and initial tuning parameters
 QuickPID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, persistenceDefault.tempPID[0], persistenceDefault.tempPID[1], persistenceDefault.tempPID[2], QuickPID::DIRECT);
 QuickPID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, persistenceDefault.slopePID[0], persistenceDefault.slopePID[1], persistenceDefault.slopePID[2], QuickPID::DIRECT);
+
+// timer-based low frequency PWM control of the SSR
+hw_timer_t* relayTimer = NULL;
+portMUX_TYPE relayMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint8_t relayDC = 0;
+volatile boolean relayActive = false;
 
 int activeReflowProfile = -1;
 
@@ -139,8 +149,15 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 volatile boolean fetchRequired = false;
 
 
-void alarm(){
 
+void setRelayDC(uint8_t dutyCycle){ //0-100 in percent
+  portENTER_CRITICAL_ISR(&relayMux);
+  relayDC = dutyCycle;
+  portEXIT_CRITICAL_ISR(&relayMux);
+}
+
+void alarm(){
+  setRelayDC(0);
   digitalWrite(RELAY_PIN, LOW);   // Turn off the heating element
   
   while(true){  // can only be exited by resetting the UniFlow Controller
@@ -162,11 +179,9 @@ void alarm(){
 
 void enc_SW(){
   if((long)(millis() - lastClick) >= CLICK_BOUNCE){
-    Serial.println("Click");
     encClicked = true;
     lastClick = millis(); 
   }
-  else Serial.println("Bounce");
 }
 
 int readEncoder(){
@@ -182,6 +197,22 @@ void setEncoder(int pos){
   encoder.setCount(pos);
 }
 
+int getMenuEncoder(int positions){
+  int encoderPos = readEncoder();
+  if(encoderPos>=0){
+    setEncoder(encoderPos%positions);
+    return encoderPos%positions;
+  }
+  else{
+    while(encoderPos < 0){
+      encoderPos += positions;
+    }
+    setEncoder(encoderPos);
+  }
+
+  return encoderPos;
+}
+
 void drawInterface(){
   display.clearDisplay();
 
@@ -194,7 +225,7 @@ void drawInterface(){
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(30, 8);     
 
-  display.println(input_temp);
+  display.println(int(input_temp));
   
   display.setTextSize(1);
   display.setCursor(55, 50);
@@ -230,6 +261,33 @@ void parameterConfiguration(String pName, float* parameter, float increments){
   encClicked = false;
 }
 
+void booleanConfiguration(String pName, bool* parameter){
+  int encoderPos = readAndResetEncoder();
+
+  while(!encClicked){
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+
+    display.setTextSize(1);
+    display.setCursor(0,0);
+    display.println(pName);
+
+    display.setTextSize(3);
+    display.setCursor(15,15);
+
+    if(readEncoder()%2 == 0) display.println(F(*parameter));
+    else display.println(F(!(*parameter)));
+
+    display.display();
+    
+    yield();
+  }
+
+  if(readEncoder()%2 == 1) *parameter = !(*parameter);
+  setEncoder(encoderPos);
+  encClicked = false;  
+}
+
 void configurationMenu(){
   display.clearDisplay();
 
@@ -244,7 +302,7 @@ void configurationMenu(){
     
     display.setTextSize(1);
     
-    if(readEncoder()%4 == 0){
+    if(getMenuEncoder(4) == 0){
       display.fillRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -256,7 +314,7 @@ void configurationMenu(){
     display.setCursor(10,12);
     display.println(F("General settings"));
         
-    if(readEncoder()%4 == 1){
+    if(getMenuEncoder(4) == 1){
       display.fillRoundRect(0, 23, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -268,7 +326,7 @@ void configurationMenu(){
     display.setCursor(10,25);
     display.println(F("Setpoints"));
         
-    if(readEncoder()%4 == 2){
+    if(getMenuEncoder(4) == 2){
       display.fillRoundRect(0, 36, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -280,7 +338,7 @@ void configurationMenu(){
     display.setCursor(10,38);
     display.println(F("PID parameters"));
 
-    if(readEncoder()%4 == 3){
+    if(getMenuEncoder(4) == 3){
       display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -294,7 +352,7 @@ void configurationMenu(){
       
     if(encClicked){
       encClicked = false;
-      if(readEncoder()%4 < 3) menu_setting = readAndResetEncoder()%4 + 1;
+      if(getMenuEncoder(4) < 3) menu_setting = readAndResetEncoder()%4 + 1;
       else configurationCompleted = true;
     }
   }
@@ -308,9 +366,42 @@ void configurationMenu(){
     display.setCursor(0,0);
     display.println(F("General settings"));
 
+    if(readEncoder()%2 == 0){
+      display.fillRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK); 
+    }
+    else {
+      display.drawRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,12);
+    display.println(F("SlopePID"));
+    display.setCursor(90,12);
+    display.println(persistence.useSlopePID);
+
+    if(readEncoder()%2 == 1){
+      display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(25,51);
+    display.println(F("Back to main"));
+
     if(encClicked){
       encClicked = false;
-      menu_setting = 0;
+      if(readEncoder()%2 == 0) booleanConfiguration(String("Use SlopePID"), &persistence.useSlopePID);
+      
+      else if(readEncoder()%2 == 1){
+        EEPROM.put(0,persistence);
+        EEPROM.commit();
+        setEncoder(0);
+        menu_setting = 0;
+      }
     }
   }
 
@@ -593,17 +684,16 @@ void configurationMenu(){
     display.println(d_slope);
 
     if(readEncoder()%7 == 6){
-      display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.fillRoundRect(0, 49, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
     else {
-      display.drawRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
+      display.drawRoundRect(0, 49, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_WHITE);
     }
 
-    display.setCursor(25,51);
+    display.setCursor(10,51);
     display.println(F("<- Save"));
-
     
     if(encClicked){
       encClicked = false;
@@ -621,8 +711,7 @@ void configurationMenu(){
         
         setEncoder(2);
         menu_setting = 0;
-      }
-      
+      }      
     }
   }
 }
@@ -631,6 +720,38 @@ void IRAM_ATTR fetchData(){
   portENTER_CRITICAL_ISR(&timerMux);
   fetchRequired = true;
   portEXIT_CRITICAL_ISR(&timerMux);
+}
+
+void IRAM_ATTR writeRelay(){
+  int nextPeriod = 500000;
+  portENTER_CRITICAL_ISR(&relayMux);
+  
+  if(!relayActive && relayDC == 100){
+    nextPeriod = (int)(RELAY_WINDOW*1000); // relayDC needs to be rechecked after full RELAY_WINDOW
+    digitalWrite(RELAY_PIN, HIGH);
+    relayActive = true;
+  }
+  else if(!relayActive && relayDC > 0){
+    nextPeriod = (int)((RELAY_WINDOW/100)*relayDC*1000); // relay needs to be turned off again after this time
+    digitalWrite(RELAY_PIN, HIGH);
+    relayActive = true;
+  }
+  else if(relayActive && relayDC > 0){
+    nextPeriod = (int)(RELAY_WINDOW*1000-(RELAY_WINDOW/100)*relayDC*1000); // relay window ends after this amount of time
+    digitalWrite(RELAY_PIN, LOW);
+    relayActive = false;
+  }
+  else if(relayDC == 0){ //relayDC == 0 => check for relay activation every 500ms
+    nextPeriod = 500000; //500ms period  
+    digitalWrite(RELAY_PIN, LOW);
+    relayActive = false;
+  }
+  portEXIT_CRITICAL_ISR(&relayMux);
+
+  timerAlarmWrite(relayTimer, nextPeriod, false);
+  timerWrite(relayTimer, 0);
+  timerAlarmEnable(relayTimer);
+  
 }
 
 double calculateLinRegSlope(void){
@@ -847,6 +968,19 @@ void setup() {
   Serial.println("completed!");
 
   Serial.println("Bootup sequence completed!");
+
+  /*#################################
+   * Hardware timer setup
+   ##################################*/
+  timer = timerBegin(0,80,true); // Use timer 0, prescaler 80 => increment each microsecond, count up
+  timerAttachInterrupt(timer, &fetchData, true); // Attach ISR, edge interrupt
+  timerAlarmWrite(timer, 500000, true); // 500ms timer period, auto reload
+
+  relayTimer = timerBegin(1, 80, true); // Use timer 1, prescaler 80.000 => increment each millisecond, count up
+  timerAttachInterrupt(relayTimer, &writeRelay, true); // Attach ISR, edge interrupt
+  timerAlarmWrite(relayTimer, 500000, false); // Initial 500ms period, no auto reload  
+  timerAlarmEnable(relayTimer); // enable timer
+  
   
   /*#################################
    * SK6812 LED Setup
@@ -931,19 +1065,14 @@ void setup() {
   PID_slope.SetTunings(persistence.slopePID[0], persistence.slopePID[1], persistence.slopePID[2]);
    
   //tell the PID to range between 0 and the full window size
-  //PID_temp.SetOutputLimits(-output_zero_offset, RELAY_WINDOW-output_zero_offset);
+//  PID_temp.SetOutputLimits(-output_zero_offset, RELAY_WINDOW-output_zero_offset);
   PID_temp.SetOutputLimits(0, 100);
   //PID_temp.SetSampleTime(RELAY_WINDOW);
 
   PID_slope.SetOutputLimits(0,100);
   //PID_slope.SetSampleTime(RELAY_WINDOW);
 
-  /*#################################
-   * Hardware timer setup
-   ##################################*/
-  timer = timerBegin(0,80,true); // Use timer 0, prescaler 80 => increment each microsecond, count up
-  timerAttachInterrupt(timer, &fetchData, true); // Attach ISR, edge interrupt
-  timerAlarmWrite(timer, 500000, true); // 500ms timer period, auto reload
+  // Activate data fetching timer interrupt
   timerAlarmEnable(timer); // enable timer
     
   //turn the PID on
@@ -986,47 +1115,36 @@ void loop() {
   else if((reflow_cycle == 2 || reflow_cycle == 4) && input_temp >= temp_setpoint-5) changeReflowToCycle(reflow_cycle+1);
   else if(reflow_cycle == 3 && (millis() - last_cycle_change > 20000)) changeReflowToCycle(4);
   //else if(reflow_cycle == 5 && (millis() - last_cycle_change > 30000)) changeReflowToCycle(6);
-    
-  
-    
-  //Serial.println(input, 2);
 
   // Do PID calculations
   PID_temp.Compute();
   PID_slope.Compute();
 
-  output_pid_series = ((output_pid_temp/100.0) * (output_pid_slope/100.0))*100.0;
+  if(persistence.useSlopePID){
+    output_pid_series = ((output_pid_temp/100.0) * (output_pid_slope/100.0))*100.0;
+  }
+  else output_pid_series = output_pid_temp;
   
   int relay_dc = map(output_pid_series, 0, 100, 0, RELAY_WINDOW);
    
   
   if (millis() - windowStartTime > RELAY_WINDOW)
   { 
-        
-    /*Serial.print(input_temp, 2);
-    Serial.print("°C , ");
-    Serial.print(input_slope, 4);
-    Serial.print("°C/s , ");
-    Serial.print(output_pid_temp);
-    Serial.print("% , ");
-    Serial.print(output_pid_slope);
-    Serial.print("% , ");
-    Serial.print(relay_dc, 2);
-    Serial.println("ms");*/
-
     //time to shift the Relay Window
     windowStartTime = millis();
   }
+
+  setRelayDC(output_pid_series);
   
-  if (relay_dc > millis() - windowStartTime){
+  /*if (relay_dc > millis() - windowStartTime){
     digitalWrite(RELAY_PIN,HIGH);
   }
   else{
     digitalWrite(RELAY_PIN,LOW);
-  }
+  }*/
 
   // Trigger alarm state if cycle takes longer than ALARM_TIMEOUT
-  if(millis() - startTime >= ALARM_TIMEOUT) alarm();
+  if(millis() - last_cycle_change >= ALARM_TIMEOUT) alarm();
   
   
 }
