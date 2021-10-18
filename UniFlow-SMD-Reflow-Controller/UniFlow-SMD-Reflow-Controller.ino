@@ -17,7 +17,6 @@
 #define RELAY_WINDOW          2500
 #define GFX_REFRESH_TIME      1000
 #define TEMP_OFFSET           10
-#define ALARM_TIMEOUT         10*60*1000   // 10 minutes in milliseconds
 
 #define FORCERESET_EEPROM     false
 
@@ -97,6 +96,8 @@ struct {
   float setpoints[4][10];
 
   uint8_t useSlopePID;
+
+  float alarmTimeout;
   
 } persistence;
 
@@ -107,6 +108,8 @@ const struct {
   float setpoints[4][10] = {{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60}};
 
   uint8_t useSlopePID = 1;
+
+  float alarmTimeout = 10;
   
 } persistenceDefault;
 
@@ -249,14 +252,17 @@ void parameterConfiguration(String pName, float* parameter, float increments){
 
     display.setTextSize(3);
     display.setCursor(20,15);
-    display.println((*parameter)+increments*readEncoder());
+    if((*parameter)+increments*readEncoder() >= 0) display.println((*parameter)+increments*readEncoder());
+    else display.println(0.0);
     
     display.display();
  
     yield(); // Prevent watchdog timeout
   }
 
-  *parameter += increments*readAndResetEncoder();
+  if((*parameter)+increments*readEncoder() >= 0) *parameter += increments*readAndResetEncoder();
+  else *parameter = 0;
+  
   setEncoder(encoderPos);
   encClicked = false;
 }
@@ -366,7 +372,7 @@ void configurationMenu(){
     display.setCursor(0,0);
     display.println(F("General settings"));
 
-    if(getMenuEncoder(2) == 0){
+    if(getMenuEncoder(3) == 0){
       display.fillRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -380,7 +386,22 @@ void configurationMenu(){
     display.setCursor(90,12);
     display.println(persistence.useSlopePID == 0 ? "false" : "true");
 
-    if(getMenuEncoder(2) == 1){
+    if(getMenuEncoder(3) == 1){
+      display.fillRoundRect(0, 23, 128, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    else {
+      display.drawRoundRect(0, 23, 128, 12, 3, SSD1306_WHITE);
+      display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.setCursor(10,25);
+    display.println(F("Alarm"));
+    display.setCursor(90, 25);
+    if(persistence.alarmTimeout == 0) display.println("off");
+    else display.println((int)persistence.alarmTimeout);
+
+    if(getMenuEncoder(3) == 2){
       display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -394,9 +415,10 @@ void configurationMenu(){
 
     if(encClicked){
       encClicked = false;
-      if(getMenuEncoder(2) == 0) booleanConfiguration(String("Use SlopePID"), &persistence.useSlopePID);
+      if(getMenuEncoder(3) == 0) booleanConfiguration(String("Use SlopePID"), &persistence.useSlopePID);
+      else if(getMenuEncoder(3) == 1) parameterConfiguration(String("Alarm Timeout [min]"), &persistence.alarmTimeout, 1.0);
       
-      else if(getMenuEncoder(2) == 1){
+      else if(getMenuEncoder(3) == 2){
         EEPROM.put(0,persistence);
         EEPROM.commit();
         setEncoder(0);
@@ -1143,8 +1165,8 @@ void loop() {
     digitalWrite(RELAY_PIN,LOW);
   }*/
 
-  // Trigger alarm state if cycle takes longer than ALARM_TIMEOUT
-  if(millis() - last_cycle_change >= ALARM_TIMEOUT) alarm();
+  // Trigger alarm state if cycle takes longer than alarmTimeout
+  if(millis() - last_cycle_change >= (persistence.alarmTimeout*60000) && persistence.alarmTimeout > 0) alarm();
   
   
 }
