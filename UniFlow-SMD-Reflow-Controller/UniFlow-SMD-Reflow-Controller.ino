@@ -96,7 +96,7 @@ struct {
   
   float setpoints[4][10];
 
-  bool useSlopePID;
+  uint8_t useSlopePID;
   
 } persistence;
 
@@ -106,7 +106,7 @@ const struct {
   
   float setpoints[4][10] = {{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60},{0,50,150,240,0,1.5,1.5,-3,30,60}};
 
-  bool useSlopePID = true;
+  uint8_t useSlopePID = 1;
   
 } persistenceDefault;
 
@@ -261,7 +261,7 @@ void parameterConfiguration(String pName, float* parameter, float increments){
   encClicked = false;
 }
 
-void booleanConfiguration(String pName, bool* parameter){
+void booleanConfiguration(String pName, uint8_t* parameter){
   int encoderPos = readAndResetEncoder();
 
   while(!encClicked){
@@ -275,15 +275,15 @@ void booleanConfiguration(String pName, bool* parameter){
     display.setTextSize(3);
     display.setCursor(15,15);
 
-    if(readEncoder()%2 == 0) display.println(F(*parameter));
-    else display.println(F(!(*parameter)));
+    if(getMenuEncoder(2) == 0) display.println((*parameter) == 0 ? "false" : "true");
+    else display.println((*parameter) == 0 ? "true" : "false");
 
     display.display();
     
     yield();
   }
 
-  if(readEncoder()%2 == 1) *parameter = !(*parameter);
+  if(getMenuEncoder(2) == 1) *parameter = ((*parameter) == 0 ? 1 : 0);
   setEncoder(encoderPos);
   encClicked = false;  
 }
@@ -366,7 +366,7 @@ void configurationMenu(){
     display.setCursor(0,0);
     display.println(F("General settings"));
 
-    if(readEncoder()%2 == 0){
+    if(getMenuEncoder(2) == 0){
       display.fillRoundRect(0, 10, 128, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -378,9 +378,9 @@ void configurationMenu(){
     display.setCursor(10,12);
     display.println(F("SlopePID"));
     display.setCursor(90,12);
-    display.println(persistence.useSlopePID);
+    display.println(persistence.useSlopePID == 0 ? "false" : "true");
 
-    if(readEncoder()%2 == 1){
+    if(getMenuEncoder(2) == 1){
       display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -394,9 +394,9 @@ void configurationMenu(){
 
     if(encClicked){
       encClicked = false;
-      if(readEncoder()%2 == 0) booleanConfiguration(String("Use SlopePID"), &persistence.useSlopePID);
+      if(getMenuEncoder(2) == 0) booleanConfiguration(String("Use SlopePID"), &persistence.useSlopePID);
       
-      else if(readEncoder()%2 == 1){
+      else if(getMenuEncoder(2) == 1){
         EEPROM.put(0,persistence);
         EEPROM.commit();
         setEncoder(0);
@@ -414,7 +414,7 @@ void configurationMenu(){
     display.setCursor(0,0);
     display.println(F("Setpoints"));
 
-    if(readEncoder()%5 == 0){
+    if(getMenuEncoder(5) == 0){
       display.fillRoundRect(0, 10, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -426,7 +426,7 @@ void configurationMenu(){
     display.setCursor(6,15);
     display.println(F("Profile 1"));
 
-    if(readEncoder()%5 == 1){
+    if(getMenuEncoder(5) == 1){
       display.fillRoundRect(64, 10, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -438,7 +438,7 @@ void configurationMenu(){
     display.setCursor(70,15);
     display.println(F("Profile 2"));
 
-    if(readEncoder()%5 == 2){
+    if(getMenuEncoder(5) == 2){
       display.fillRoundRect(0, 29, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -450,7 +450,7 @@ void configurationMenu(){
     display.setCursor(6,34);
     display.println(F("Profile 3"));
 
-    if(readEncoder()%5 == 3){
+    if(getMenuEncoder(5) == 3){
       display.fillRoundRect(64, 29, 63, 18, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -462,7 +462,7 @@ void configurationMenu(){
     display.setCursor(70,34);
     display.println(F("Profile 4"));
 
-    if(readEncoder()%5 == 4){
+    if(getMenuEncoder(5) == 4){
       display.fillRoundRect(20, 49, 88, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -476,7 +476,7 @@ void configurationMenu(){
 
     if(encClicked){
       encClicked = false;
-      if(readEncoder()%5<4) menu_setting = readAndResetEncoder()%4 + 20;
+      if(getMenuEncoder(5)<4) menu_setting = readAndResetEncoder()%4 + 20;
       else {
         setEncoder(1);
         menu_setting = 0;
@@ -503,23 +503,23 @@ void configurationMenu(){
     display.drawLine(80,20,105,20,SSD1306_WHITE);
     display.drawLine(105,20,127,42,SSD1306_WHITE);
 
-    if(readEncoder() % 9 == 0) display.drawLine(0,54,19,54,SSD1306_WHITE);
-    else if(readEncoder() % 9 == 1) display.drawLine(30,59,50,59,SSD1306_WHITE);
-    else if(readEncoder() % 9 == 2) display.drawLine(13,33,33,33,SSD1306_WHITE);
-    else if(readEncoder() % 9 == 3) display.drawLine(42,30,62,30,SSD1306_WHITE);
-    else if(readEncoder() % 9 == 4) {
+    if(getMenuEncoder(9) == 0) display.drawLine(0,54,19,54,SSD1306_WHITE);
+    else if(getMenuEncoder(9) == 1) display.drawLine(30,59,50,59,SSD1306_WHITE);
+    else if(getMenuEncoder(9) == 2) display.drawLine(13,33,33,33,SSD1306_WHITE);
+    else if(getMenuEncoder(9) == 3) display.drawLine(42,30,62,30,SSD1306_WHITE);
+    else if(getMenuEncoder(9) == 4) {
       display.setRotation(1);
       display.drawLine(30,48,50,48,SSD1306_WHITE);
       display.setRotation(0);
     }
-    else if(readEncoder() % 9 == 5) display.drawLine(53,13,73,13,SSD1306_WHITE);
-    else if(readEncoder() % 9 == 6) display.drawLine(87,10,107,10,SSD1306_WHITE);
-    else if(readEncoder() % 9 == 7) {
+    else if(getMenuEncoder(9) == 5) display.drawLine(53,13,73,13,SSD1306_WHITE);
+    else if(getMenuEncoder(9) == 6) display.drawLine(87,10,107,10,SSD1306_WHITE);
+    else if(getMenuEncoder(9) == 7) {
       display.setRotation(1);
       display.drawLine(30,24,50,24,SSD1306_WHITE);
       display.setRotation(0);
     }
-    else if(readEncoder() % 9 == 8) {
+    else if(getMenuEncoder(9) == 8) {
       display.drawLine(0,21,35,21,SSD1306_WHITE);    
     }
 
@@ -556,16 +556,16 @@ void configurationMenu(){
     if(encClicked){
       encClicked = false;
       
-      if(readEncoder() % 9 == 0) parameterConfiguration(String("Standby temperature"), &persistence.setpoints[menu_setting%20][1], 1.0);
-      else if(readEncoder() % 9 == 1) parameterConfiguration(String("Amb.-Preheat slope"), &persistence.setpoints[menu_setting%20][5], 0.1);
-      else if(readEncoder() % 9 == 2) parameterConfiguration(String("Preheat temperature"), &persistence.setpoints[menu_setting%20][2], 1.0);
-      else if(readEncoder() % 9 == 3) parameterConfiguration(String("Preheat time"), &persistence.setpoints[menu_setting%20][8], 1.0);
-      else if(readEncoder() % 9 == 4) parameterConfiguration(String("Pr.heat-Reflow slope"), &persistence.setpoints[menu_setting%20][6], 0.1);
-      else if(readEncoder() % 9 == 5) parameterConfiguration(String("Reflow temperature"), &persistence.setpoints[menu_setting%20][3], 1.0);
-      else if(readEncoder() % 9 == 6) parameterConfiguration(String("Reflow time"), &persistence.setpoints[menu_setting%20][9], 1.0);
-      else if(readEncoder() % 9 == 7) parameterConfiguration(String("Cooldown slope"), &persistence.setpoints[menu_setting%20][7], 0.1);
+      if(getMenuEncoder(9) == 0) parameterConfiguration(String("Standby temperature"), &persistence.setpoints[menu_setting%20][1], 1.0);
+      else if(getMenuEncoder(9) == 1) parameterConfiguration(String("Amb.-Preheat slope"), &persistence.setpoints[menu_setting%20][5], 0.1);
+      else if(getMenuEncoder(9) == 2) parameterConfiguration(String("Preheat temperature"), &persistence.setpoints[menu_setting%20][2], 1.0);
+      else if(getMenuEncoder(9) == 3) parameterConfiguration(String("Preheat time"), &persistence.setpoints[menu_setting%20][8], 1.0);
+      else if(getMenuEncoder(9) == 4) parameterConfiguration(String("Pr.heat-Reflow slope"), &persistence.setpoints[menu_setting%20][6], 0.1);
+      else if(getMenuEncoder(9) == 5) parameterConfiguration(String("Reflow temperature"), &persistence.setpoints[menu_setting%20][3], 1.0);
+      else if(getMenuEncoder(9) == 6) parameterConfiguration(String("Reflow time"), &persistence.setpoints[menu_setting%20][9], 1.0);
+      else if(getMenuEncoder(9) == 7) parameterConfiguration(String("Cooldown slope"), &persistence.setpoints[menu_setting%20][7], 0.1);
 
-      else if(readEncoder() % 9 == 8){
+      else if(getMenuEncoder(9) == 8){
         EEPROM.put(0,persistence);
         EEPROM.commit();
         setEncoder(menu_setting%20);
@@ -587,7 +587,7 @@ void configurationMenu(){
     display.setCursor(70,0);
     display.println(F("Slope"));
 
-     if(readEncoder()%7 == 0){
+     if(getMenuEncoder(7) == 0){
       display.fillRoundRect(0, 10, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK); 
     }
@@ -603,7 +603,7 @@ void configurationMenu(){
     dtostrf(persistence.tempPID[0], 4, 2, p_temp);
     display.println(p_temp);
         
-    if(readEncoder()%7 == 1){
+    if(getMenuEncoder(7) == 1){
       display.fillRoundRect(0, 23, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -619,7 +619,7 @@ void configurationMenu(){
     dtostrf(persistence.tempPID[1], 4, 2, i_temp);
     display.println(i_temp);
         
-    if(readEncoder()%7 == 2){
+    if(getMenuEncoder(7) == 2){
       display.fillRoundRect(0, 36, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -635,7 +635,7 @@ void configurationMenu(){
     dtostrf(persistence.tempPID[2], 4, 2, d_temp);
     display.println(d_temp);
 
-    if(readEncoder()%7 == 3){
+    if(getMenuEncoder(7) == 3){
       display.fillRoundRect(64, 10, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -651,7 +651,7 @@ void configurationMenu(){
     dtostrf(persistence.slopePID[0], 4, 2, p_slope);
     display.println(p_slope);
 
-    if(readEncoder()%7 == 4){
+    if(getMenuEncoder(7) == 4){
       display.fillRoundRect(64, 23, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -667,7 +667,7 @@ void configurationMenu(){
     dtostrf(persistence.slopePID[1], 4, 2, i_slope);
     display.println(i_slope);
 
-    if(readEncoder()%7 == 5){
+    if(getMenuEncoder(7) == 5){
       display.fillRoundRect(64, 36, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -683,7 +683,7 @@ void configurationMenu(){
     dtostrf(persistence.slopePID[2], 4, 2, d_slope);
     display.println(d_slope);
 
-    if(readEncoder()%7 == 6){
+    if(getMenuEncoder(7) == 6){
       display.fillRoundRect(0, 49, 64, 12, 3, SSD1306_WHITE);
       display.setTextColor(SSD1306_BLACK);
     }
@@ -698,14 +698,14 @@ void configurationMenu(){
     if(encClicked){
       encClicked = false;
 
-      if(readEncoder()%7 == 0) parameterConfiguration(String("Temp Controller - P"), &persistence.tempPID[0], 0.1);
-      else if(readEncoder()%7 == 1) parameterConfiguration(String("Temp Controller - I"), &persistence.tempPID[1], 0.05);
-      else if(readEncoder()%7 == 2) parameterConfiguration(String("Temp Controller - D"), &persistence.tempPID[2], 1.0);
-      else if(readEncoder()%7 == 3) parameterConfiguration(String("Slope Controller - P"), &persistence.slopePID[0], 1.0);
-      else if(readEncoder()%7 == 4) parameterConfiguration(String("Slope Controller - I"), &persistence.slopePID[1], 0.05);
-      else if(readEncoder()%7 == 5) parameterConfiguration(String("Slope Controller - D"), &persistence.slopePID[2], 1.0);
+      if(getMenuEncoder(7) == 0) parameterConfiguration(String("Temp Controller - P"), &persistence.tempPID[0], 0.1);
+      else if(getMenuEncoder(7) == 1) parameterConfiguration(String("Temp Controller - I"), &persistence.tempPID[1], 0.05);
+      else if(getMenuEncoder(7) == 2) parameterConfiguration(String("Temp Controller - D"), &persistence.tempPID[2], 1.0);
+      else if(getMenuEncoder(7) == 3) parameterConfiguration(String("Slope Controller - P"), &persistence.slopePID[0], 1.0);
+      else if(getMenuEncoder(7) == 4) parameterConfiguration(String("Slope Controller - I"), &persistence.slopePID[1], 0.05);
+      else if(getMenuEncoder(7) == 5) parameterConfiguration(String("Slope Controller - D"), &persistence.slopePID[2], 1.0);
       
-      else if(readEncoder()%7 == 6){
+      else if(getMenuEncoder(7) == 6){
         EEPROM.put(0,persistence);
         EEPROM.commit();
         
