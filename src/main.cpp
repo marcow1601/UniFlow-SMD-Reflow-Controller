@@ -1,4 +1,6 @@
-#include "max6675.h"
+#include <Arduino.h>
+
+#include <max6675.h>
 #include <QuickPID.h>
 
 #include <SPI.h>
@@ -114,8 +116,8 @@ const struct {
 } persistenceDefault;
 
 //Specify the PID links and initial tuning parameters
-QuickPID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, persistenceDefault.tempPID[0], persistenceDefault.tempPID[1], persistenceDefault.tempPID[2], QuickPID::DIRECT);
-QuickPID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, persistenceDefault.slopePID[0], persistenceDefault.slopePID[1], persistenceDefault.slopePID[2], QuickPID::DIRECT);
+QuickPID PID_temp(&input_temp, &output_pid_temp, &temp_setpoint, persistenceDefault.tempPID[0], persistenceDefault.tempPID[1], persistenceDefault.tempPID[2], PID_temp.Action::direct);
+QuickPID PID_slope(&input_slope, &output_pid_slope, &slope_setpoint, persistenceDefault.slopePID[0], persistenceDefault.slopePID[1], persistenceDefault.slopePID[2], PID_slope.Action::direct);
 
 // timer-based low frequency PWM control of the SSR
 hw_timer_t* relayTimer = NULL;
@@ -1098,8 +1100,8 @@ void setup() {
   timerAlarmEnable(timer); // enable timer
     
   //turn the PID on
-  PID_temp.SetMode(QuickPID::AUTOMATIC);
-  PID_slope.SetMode(QuickPID::AUTOMATIC);
+  PID_temp.SetMode(PID_temp.Control::automatic);
+  PID_slope.SetMode(PID_slope.Control::automatic);
 
   
   
